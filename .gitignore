@@ -1,0 +1,6 @@
+# Ignore data/, artifacts/, __pycache__
+Data/
+artifacts/
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
