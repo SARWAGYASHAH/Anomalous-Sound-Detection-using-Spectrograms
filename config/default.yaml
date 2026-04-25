@@ -1,1 +1,103 @@
-# default.yaml - Base config (sr=16k, n_fft=1024, etc.)
+# ============================================================
+# default.yaml - Base configuration for Anomalous Sound Detection
+# All pipeline scripts load this as the base config.
+# Override specific values with experiment-specific YAML files.
+# ============================================================
+
+# ---------- Project ----------
+project:
+  name: "anomalous-sound-detection"
+  description: "Autoencoder-based anomaly detection on industrial machine sounds"
+  version: "0.1.0"
+
+# ---------- Reproducibility ----------
+seed: 42
+
+# ---------- Data Paths ----------
+data:
+  raw_dir: "Data/raw"
+  processed_dir: "Data/processed"
+  zip_file: "Data/dev_data_gearbox.zip"
+  machine_type: "gearbox"           # Target machine type
+  train_split: 0.8                  # 80% train, 20% validation
+
+# ---------- Audio Processing ----------
+audio:
+  sample_rate: 16000                # Hz
+  duration: 10                      # seconds per clip
+  mono: true                        # Convert to mono
+
+# ---------- Spectrogram ----------
+spectrogram:
+  type: "mel"                       # "mel" | "stft" | "mfcc"
+  n_fft: 1024                       # FFT window size
+  hop_length: 512                   # Hop between frames
+  n_mels: 128                       # Number of mel bands (for mel spectrograms)
+  power: 2.0                        # Power for spectrogram magnitude
+  normalize: true                   # Normalize spectrograms
+
+# ---------- Model ----------
+model:
+  type: "autoencoder"               # "autoencoder" | future models
+  autoencoder:
+    input_dim: 128                  # Must match n_mels
+    latent_dim: 32                  # Bottleneck dimension
+    encoder_layers: [128, 64, 32]   # Encoder hidden layer sizes
+    decoder_layers: [32, 64, 128]   # Decoder hidden layer sizes
+    activation: "relu"              # "relu" | "leaky_relu" | "elu"
+    dropout: 0.2                    # Dropout rate
+
+# ---------- Training ----------
+training:
+  epochs: 50
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001              # L2 regularization
+  optimizer: "adam"                  # "adam" | "sgd" | "adamw"
+  scheduler:
+    type: "step"                    # "step" | "cosine" | "none"
+    step_size: 10                   # StepLR: decay every N epochs
+    gamma: 0.5                      # StepLR: multiplicative factor
+  early_stopping:
+    enabled: true
+    patience: 10                    # Stop after N epochs with no improvement
+    min_delta: 0.0001               # Minimum improvement threshold
+  loss: "mse"                       # "mse" | "mae" | "custom"
+
+# ---------- Inference / Anomaly Detection ----------
+inference:
+  threshold_method: "percentile"    # "percentile" | "mean_std" | "fixed"
+  percentile: 95                    # For percentile-based threshold
+  std_multiplier: 2.0               # For mean+std method
+  fixed_threshold: null             # For fixed method
+  classification:
+    labels: ["normal", "follow_up", "alert"]
+    boundaries: [0.5, 0.8]          # Score boundaries between labels
+
+# ---------- Artifact Versioning ----------
+versioning:
+  mode: "auto"                      # "auto" (increment) | "manual" (from config)
+  manual_version: null              # e.g., "v5" — used only when mode is "manual"
+  base_dir: "artifacts/models"      # Where versioned model folders are saved
+
+# ---------- Artifact Paths ----------
+artifacts:
+  models_dir: "artifacts/models"
+  metadata_dir: "artifacts/metadata"
+  logs_dir: "artifacts/logs"
+
+# ---------- MLflow ----------
+mlflow:
+  enabled: true
+  tracking_uri: "mlruns"            # Local directory (relative to project root)
+  experiment_name: "gearbox_anomaly_detection"
+  log_models: true                  # Log model artifacts to MLflow
+  tags:
+    machine_type: "gearbox"
+    project: "anomalous-sound-detection"
+
+# ---------- Logging ----------
+logging:
+  level: "INFO"                     # "DEBUG" | "INFO" | "WARNING" | "ERROR"
+  console: true
+  file: true                        # Write logs to artifacts/logs/

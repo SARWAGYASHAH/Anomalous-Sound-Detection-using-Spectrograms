@@ -1,0 +1,16 @@
+# ============================================================
+# mlflow.yaml - MLflow-specific configuration
+# Separated for clarity; values here are also available in default.yaml
+# This file can be used for standalone MLflow setup if needed.
+# ============================================================
+
+tracking_uri: "mlruns"
+experiment_name: "gearbox_anomaly_detection"
+log_models: true
+registry_uri: null                   # No model registry (local-only setup)
+artifact_location: "artifacts/models"
+
+tags:
+  machine_type: "gearbox"
+  project: "anomalous-sound-detection"
+  framework: "pytorch"

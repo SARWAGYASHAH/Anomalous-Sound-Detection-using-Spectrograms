@@ -1,1 +1,44 @@
-# experiment_01.yaml - Override for specific run
+# ============================================================
+# experiment_01.yaml - Override file for Experiment 01
+# Only specify values that DIFFER from default.yaml.
+# These values are merged on top of the base config at runtime.
+# ============================================================
+# Experiment: Higher learning rate + deeper bottleneck on gearbox data
+
+# ---------- Reproducibility ----------
+seed: 123
+
+# ---------- Model Override ----------
+model:
+  autoencoder:
+    latent_dim: 16                  # Smaller bottleneck (was 32)
+    encoder_layers: [128, 64, 32, 16]
+    decoder_layers: [16, 32, 64, 128]
+    dropout: 0.3                    # More regularization
+
+# ---------- Training Override ----------
+training:
+  epochs: 100                       # Train longer
+  learning_rate: 0.0005             # Lower LR for stability
+  batch_size: 64                    # Larger batch
+  optimizer: "adamw"                # Use AdamW instead of Adam
+  scheduler:
+    type: "cosine"                  # Cosine annealing instead of step
+  early_stopping:
+    patience: 15                    # More patience
+
+# ---------- Inference Override ----------
+inference:
+  percentile: 97                    # Stricter anomaly threshold
+
+# ---------- Versioning Override ----------
+versioning:
+  mode: "manual"
+  manual_version: "v1_experiment_01"
+
+# ---------- MLflow Override ----------
+mlflow:
+  experiment_name: "gearbox_experiment_01"
+  tags:
+    experiment: "deeper_bottleneck"
+    notes: "Testing smaller latent dim with AdamW and cosine schedule"

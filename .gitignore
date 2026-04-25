@@ -1,6 +1,44 @@
-# Ignore data/, artifacts/, __pycache__
+# ============================================================
+# .gitignore - Anomalous Sound Detection Project
+# ============================================================
+
+# ---------- Data (large files) ----------
 Data/
+
+# ---------- Artifacts (generated at runtime) ----------
 artifacts/
+!artifacts/.gitkeep
+!artifacts/models/.gitkeep
+!artifacts/metadata/.gitkeep
+!artifacts/logs/.gitkeep
+
+# ---------- MLflow local tracking store ----------
+mlruns/
+
+# ---------- Python ----------
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ---------- Virtual Environments ----------
+ana/
+venv/
+.venv/
+env/
+
+# ---------- Jupyter ----------
 .ipynb_checkpoints/
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
