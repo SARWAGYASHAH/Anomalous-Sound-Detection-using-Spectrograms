@@ -1,8 +1,6 @@
 """
 visualization.py - Plotting utilities for spectrograms, anomaly scores, and training.
-
 All plots can be saved to disk and/or displayed interactively.
-
 Usage:
     from src.utils.visualization import plot_spectrogram, plot_loss_curve, plot_anomaly_scores
 
@@ -10,17 +8,13 @@ Usage:
     plot_loss_curve(train_losses, val_losses, save_path="plots/loss.png")
     plot_anomaly_scores(scores, labels, save_path="plots/scores.png")
 """
-
 import numpy as np
 import matplotlib
 matplotlib.use("Agg")  # Non-interactive backend for saving plots
 import matplotlib.pyplot as plt
 import seaborn as sns
-
 from src.utils.logger import get_logger
-
 logger = get_logger(__name__)
-
 # ---------- Global Style ----------
 sns.set_theme(style="darkgrid", palette="viridis")
 plt.rcParams.update({
@@ -30,8 +24,6 @@ plt.rcParams.update({
     "axes.titlesize": 13,
     "axes.labelsize": 11,
 })
-
-
 def plot_spectrogram(
     spectrogram: np.ndarray,
     sr: int = 16000,
