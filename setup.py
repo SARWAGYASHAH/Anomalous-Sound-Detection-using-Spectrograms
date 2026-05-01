@@ -20,8 +20,7 @@ setup(
     packages=find_packages(),  # Automatically discovers src/ and all sub-packages
     python_requires=">=3.10",
     install_requires=[
-        "torch>=2.0.0",
-        "torchaudio>=2.0.0",
+        "tensorflow>=2.12.0",
         "numpy>=1.24.0",
         "scipy>=1.10.0",
         "scikit-learn>=1.2.0",

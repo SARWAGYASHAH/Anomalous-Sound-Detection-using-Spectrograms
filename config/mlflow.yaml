@@ -13,4 +13,4 @@ artifact_location: "artifacts/models"
 tags:
   machine_type: "gearbox"
   project: "anomalous-sound-detection"
-  framework: "pytorch"
+  framework: "tensorflow-keras"
