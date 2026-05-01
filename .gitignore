@@ -3,7 +3,7 @@
 # ============================================================
 
 # ---------- Data (large files) ----------
-Data/
+/Data/
 
 # ---------- Artifacts (generated at runtime) ----------
 artifacts/
