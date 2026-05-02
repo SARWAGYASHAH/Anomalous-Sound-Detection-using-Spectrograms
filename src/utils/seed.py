@@ -8,7 +8,10 @@ Usage:
 
 import os
 import random
+
 import numpy as np
+import tensorflow as tf
+
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -18,24 +21,16 @@ def set_seed(seed: int = 42) -> None:
     """
     Set random seeds for full reproducibility.
 
-    Sets seeds for Python random, NumPy, and PyTorch (CPU + CUDA).
+    Sets seeds for Python random, NumPy, and TensorFlow.
 
     Args:
         seed: Integer seed value (default: 42).
     """
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    os.environ.setdefault("TF_DETERMINISTIC_OPS", "1")
+
     random.seed(seed)
     np.random.seed(seed)
+    tf.random.set_seed(seed)
 
-    try:
-        import torch
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed(seed)
-            torch.cuda.manual_seed_all(seed)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    except ImportError:
-        logger.warning("PyTorch not installed. Skipping torch seed setup.")
-
-    logger.info(f"Random seed set to {seed} (random, numpy, torch)")
+    logger.info(f"Random seed set to {seed} (random, numpy, tensorflow)")
