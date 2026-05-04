@@ -145,6 +145,96 @@ def create_autoencoder_dataset(
     return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 
+def create_autoencoder_dataset_from_files(
+    filepaths: list[str] | list[Path],
+    batch_size: int = 32,
+    shuffle: bool = True,
+    input_shape: tuple[int, int] | None = None,
+    cache: bool = False,
+) -> tf.data.Dataset:
+    """
+    Create an autoencoder dataset from explicit .npy file paths.
+
+    This is useful when the caller needs a deterministic train/validation split.
+    """
+    if not filepaths:
+        raise ValueError("No file paths provided for autoencoder dataset.")
+
+    paths = [str(path) for path in filepaths]
+    dataset = tf.data.Dataset.from_tensor_slices(paths)
+
+    if shuffle:
+        dataset = dataset.shuffle(buffer_size=len(paths), reshuffle_each_iteration=True)
+
+    dataset = dataset.map(
+        lambda path: _to_autoencoder_pair(path, input_shape),
+        num_parallel_calls=tf.data.AUTOTUNE,
+    )
+
+    if cache:
+        dataset = dataset.cache()
+
+    return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
+
+
+def create_autoencoder_train_val_datasets(
+    data_dir: str | Path,
+    batch_size: int = 32,
+    train_split: float = 0.8,
+    seed: int = 42,
+    input_shape: tuple[int, int] | None = None,
+    cache: bool = False,
+) -> tuple[tf.data.Dataset, tf.data.Dataset, dict[str, int]]:
+    """
+    Create deterministic train/validation datasets from normal spectrograms.
+
+    Returns:
+        Tuple of (train_dataset, val_dataset, counts).
+    """
+    filepaths, _ = discover_spectrogram_files(data_dir, labels=["normal"])
+
+    if not filepaths:
+        raise FileNotFoundError(f"No normal .npy spectrograms found in {Path(data_dir) / 'normal'}")
+
+    if not 0.0 < train_split < 1.0:
+        raise ValueError(f"train_split must be between 0 and 1, got {train_split}")
+
+    rng = np.random.default_rng(seed)
+    indices = rng.permutation(len(filepaths))
+    split_idx = int(len(filepaths) * train_split)
+
+    train_files = [filepaths[index] for index in indices[:split_idx]]
+    val_files = [filepaths[index] for index in indices[split_idx:]]
+
+    train_dataset = create_autoencoder_dataset_from_files(
+        train_files,
+        batch_size=batch_size,
+        shuffle=True,
+        input_shape=input_shape,
+        cache=cache,
+    )
+    val_dataset = create_autoencoder_dataset_from_files(
+        val_files,
+        batch_size=batch_size,
+        shuffle=False,
+        input_shape=input_shape,
+        cache=cache,
+    )
+
+    counts = {
+        "total": len(filepaths),
+        "train": len(train_files),
+        "validation": len(val_files),
+    }
+    logger.info(
+        "Autoencoder split: total=%s, train=%s, validation=%s",
+        counts["total"],
+        counts["train"],
+        counts["validation"],
+    )
+    return train_dataset, val_dataset, counts
+
+
 def create_labeled_dataset(
     data_dir: str | Path,
     batch_size: int = 32,

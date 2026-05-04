@@ -12,6 +12,8 @@ from src.data.spectrogram import SpectrogramExtractor
 from src.data.dataset import (
     LABEL_MAP,
     create_autoencoder_dataset,
+    create_autoencoder_dataset_from_files,
+    create_autoencoder_train_val_datasets,
     create_labeled_dataset,
     discover_spectrogram_files,
     get_labels,
@@ -23,6 +25,8 @@ __all__ = [
     "SpectrogramExtractor",
     "LABEL_MAP",
     "create_autoencoder_dataset",
+    "create_autoencoder_dataset_from_files",
+    "create_autoencoder_train_val_datasets",
     "create_labeled_dataset",
     "discover_spectrogram_files",
     "get_labels",
