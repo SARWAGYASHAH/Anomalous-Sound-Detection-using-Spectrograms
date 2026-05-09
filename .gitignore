@@ -15,6 +15,9 @@ artifacts/
 # ---------- MLflow local tracking store ----------
 mlruns/
 
+# ---------- Generated documentation assets ----------
+/docs/assets/
+
 # ---------- Python ----------
 __pycache__/
 *.pyc
