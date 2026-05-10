@@ -1,6 +1,5 @@
 """
 01_preprocess.py - Audio → Spectrogram preprocessing pipeline.
-
 Reads raw .wav files from the DCASE gearbox dataset, converts them to
 mel spectrograms, and saves as .npy files organized by split and label.
 
@@ -29,18 +28,20 @@ Usage:
 
 import argparse
 import copy
+import json
 import os
 import sys
 import time
 from pathlib import Path
 
+import numpy as np
 import yaml
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.data.audio_loader import AudioLoader
-from src.data.spectrogram import SpectrogramExtractor
+from src.data.spectrogram import SpectrogramExtractor, save_normalization_stats
 from src.utils.logger import get_logger
 from src.utils.seed import set_seed
 
@@ -130,6 +131,63 @@ def process_directory(
     return stats
 
 
+def compute_train_normalization_stats(
+    train_dir: Path,
+    loader: AudioLoader,
+    extractor: SpectrogramExtractor,
+    spec_type: str,
+    sr: int,
+    logger=None,
+) -> dict:
+    """
+    Compute global normalization stats from normal training audio only.
+
+    This avoids per-sample normalization, which can erase loudness and spectral
+    intensity differences that are useful for anomaly detection.
+    """
+    files = loader.discover_files(train_dir)
+    normal_files = [file_info for file_info in files if file_info["label"] == "normal"]
+
+    if not normal_files:
+        raise FileNotFoundError(f"No normal training .wav files found in {train_dir}")
+
+    count = 0
+    total = 0.0
+    total_sq = 0.0
+    minimum = float("inf")
+    maximum = float("-inf")
+
+    for i, file_info in enumerate(normal_files):
+        waveform, _ = loader.load(file_info["filepath"])
+        spectrogram = extractor.extract(waveform, sr=sr, spec_type=spec_type)
+        spectrogram = spectrogram.astype(np.float64)
+
+        count += spectrogram.size
+        total += float(np.sum(spectrogram))
+        total_sq += float(np.sum(np.square(spectrogram)))
+        minimum = min(minimum, float(np.min(spectrogram)))
+        maximum = max(maximum, float(np.max(spectrogram)))
+
+        if logger and ((i + 1) % 200 == 0 or (i + 1) == len(normal_files)):
+            logger.info(f"  Stats pass processed {i + 1}/{len(normal_files)} normal training files")
+
+    mean = total / count
+    variance = max((total_sq / count) - (mean ** 2), 0.0)
+    std = variance ** 0.5
+
+    return {
+        "mode": "global_standard",
+        "source_split": "train",
+        "source_label": "normal",
+        "num_files": len(normal_files),
+        "num_values": count,
+        "mean": mean,
+        "std": std,
+        "min": minimum,
+        "max": maximum,
+    }
+
+
 def main():
     """Main preprocessing pipeline."""
     # ---------- CLI Arguments ----------
@@ -169,12 +227,16 @@ def main():
         duration=audio_cfg["duration"],
     )
 
-    extractor = SpectrogramExtractor(
+    normalization_mode = spec_cfg.get("normalization_mode", "per_sample")
+    stats_path = Path(spec_cfg.get("stats_path", "artifacts/preprocessing/spectrogram_stats.json"))
+    stats = None
+
+    raw_extractor = SpectrogramExtractor(
         n_fft=spec_cfg["n_fft"],
         hop_length=spec_cfg["hop_length"],
         n_mels=spec_cfg["n_mels"],
         power=spec_cfg["power"],
-        normalize=spec_cfg["normalize"],
+        normalize=False,
     )
 
     # ---------- Define Splits ----------
@@ -187,6 +249,34 @@ def main():
         "source_test": raw_base / "source_test",
         "target_test": raw_base / "target_test",
     }
+
+    if spec_cfg.get("normalize", True) and normalization_mode.startswith("global_"):
+        if spec_cfg.get("reuse_stats", False) and stats_path.exists():
+            with open(stats_path, "r", encoding="utf-8") as f:
+                stats = json.load(f)
+            logger.info(f"Loaded existing normalization stats: {stats_path}")
+        else:
+            logger.info("Computing global spectrogram normalization stats from train/normal only")
+            stats = compute_train_normalization_stats(
+                train_dir=splits["train"],
+                loader=loader,
+                extractor=raw_extractor,
+                spec_type=spec_cfg["type"],
+                sr=audio_cfg["sample_rate"],
+                logger=logger,
+            )
+            stats["mode"] = normalization_mode
+            save_normalization_stats(stats, stats_path)
+
+    extractor = SpectrogramExtractor(
+        n_fft=spec_cfg["n_fft"],
+        hop_length=spec_cfg["hop_length"],
+        n_mels=spec_cfg["n_mels"],
+        power=spec_cfg["power"],
+        normalize=spec_cfg["normalize"],
+        normalization_mode=normalization_mode,
+        normalization_stats=stats,
+    )
 
     # ---------- Process Each Split ----------
     all_stats = {}

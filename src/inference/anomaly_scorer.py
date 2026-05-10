@@ -33,13 +33,19 @@ class ScoreSummary:
 def reconstruction_errors(
     original: np.ndarray | tf.Tensor,
     reconstructed: np.ndarray | tf.Tensor,
+    method: str = "mean",
+    top_k_fraction: float = 0.05,
+    frequency_band: tuple[float, float] | list[float] | None = None,
 ) -> np.ndarray:
     """
-    Compute per-sample mean squared reconstruction error.
+    Compute per-sample reconstruction anomaly scores.
 
     Args:
         original: Batch of original spectrograms.
         reconstructed: Batch of reconstructed spectrograms.
+        method: mean, top_k, frequency_band, or frequency_top_k.
+        top_k_fraction: Fraction of highest-error pixels to average for top-k methods.
+        frequency_band: Optional fractional mel-bin range, such as (0.1, 0.6).
 
     Returns:
         1D numpy array of anomaly scores.
@@ -52,8 +58,54 @@ def reconstruction_errors(
             f"Shape mismatch: original={original_np.shape}, reconstructed={reconstructed_np.shape}"
         )
 
-    axes = tuple(range(1, original_np.ndim))
-    return np.mean(np.square(original_np - reconstructed_np), axis=axes)
+    error = np.square(original_np - reconstructed_np)
+    method = method.lower()
+
+    if method in {"frequency_band", "frequency_top_k"}:
+        error = _select_frequency_band(error, frequency_band)
+
+    if method in {"mean", "frequency_band"}:
+        axes = tuple(range(1, error.ndim))
+        return np.mean(error, axis=axes)
+
+    if method in {"top_k", "frequency_top_k"}:
+        return _top_k_error(error, top_k_fraction=top_k_fraction)
+
+    raise ValueError(
+        f"Unknown reconstruction score method '{method}'. "
+        "Expected mean, top_k, frequency_band, or frequency_top_k."
+    )
+
+
+def _select_frequency_band(
+    error: np.ndarray,
+    frequency_band: tuple[float, float] | list[float] | None,
+) -> np.ndarray:
+    """Select a fractional mel-bin range from an error map."""
+    if frequency_band is None:
+        frequency_band = (0.0, 1.0)
+    if len(frequency_band) != 2:
+        raise ValueError("frequency_band must contain exactly two values.")
+
+    low, high = float(frequency_band[0]), float(frequency_band[1])
+    if not 0.0 <= low < high <= 1.0:
+        raise ValueError(f"frequency_band must be within [0, 1] and increasing, got {frequency_band}")
+
+    num_bins = error.shape[1]
+    low_idx = int(low * num_bins)
+    high_idx = max(low_idx + 1, int(high * num_bins))
+    return error[:, low_idx:high_idx, ...]
+
+
+def _top_k_error(error: np.ndarray, top_k_fraction: float = 0.05) -> np.ndarray:
+    """Average the highest-error pixels per sample."""
+    if not 0.0 < top_k_fraction <= 1.0:
+        raise ValueError(f"top_k_fraction must be in (0, 1], got {top_k_fraction}")
+
+    flat_error = error.reshape((error.shape[0], -1))
+    k = max(1, int(flat_error.shape[1] * float(top_k_fraction)))
+    top_values = np.partition(flat_error, kth=flat_error.shape[1] - k, axis=1)[:, -k:]
+    return np.mean(top_values, axis=1)
 
 
 def summarize_scores(scores: np.ndarray) -> ScoreSummary:
@@ -106,11 +158,20 @@ def compute_threshold(
 class ReconstructionAnomalyScorer:
     """Score tf.data batches using a trained Keras autoencoder."""
 
-    def __init__(self, model: tf.keras.Model):
+    def __init__(
+        self,
+        model: tf.keras.Model,
+        score_config: dict[str, Any] | None = None,
+    ):
         self.model = model
+        self.score_config = score_config or {}
 
     @classmethod
-    def from_model_path(cls, model_path: str) -> "ReconstructionAnomalyScorer":
+    def from_model_path(
+        cls,
+        model_path: str,
+        score_config: dict[str, Any] | None = None,
+    ) -> "ReconstructionAnomalyScorer":
         """Load a Keras model and create a scorer."""
         model = tf.keras.models.load_model(
             model_path,
@@ -118,12 +179,18 @@ class ReconstructionAnomalyScorer:
             compile=False,
         )
         logger.info("Loaded model for scoring: %s", model_path)
-        return cls(model)
+        return cls(model, score_config=score_config)
 
     def score_batch(self, batch: tf.Tensor | np.ndarray) -> np.ndarray:
         """Score one tensor/array batch."""
         reconstructed = self.model.predict(batch, verbose=0)
-        return reconstruction_errors(batch, reconstructed)
+        return reconstruction_errors(
+            batch,
+            reconstructed,
+            method=self.score_config.get("method", "mean"),
+            top_k_fraction=float(self.score_config.get("top_k_fraction", 0.05)),
+            frequency_band=self.score_config.get("frequency_band"),
+        )
 
     def score_dataset(
         self,

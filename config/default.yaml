@@ -35,17 +35,23 @@ spectrogram:
   n_mels: 128                       # Number of mel bands (for mel spectrograms)
   power: 2.0                        # Power for spectrogram magnitude
   normalize: true                   # Normalize spectrograms
+  normalization_mode: "global_standard"  # "global_standard" preserves train-set scale better than per-sample
+  stats_path: "artifacts/preprocessing/spectrogram_stats.json"
+  reuse_stats: false                # Recompute stats during preprocessing unless explicitly reused
 
 # ---------- Model ----------
 model:
   type: "autoencoder"               # "autoencoder" | future models
   autoencoder:
     input_dim: 128                  # Must match n_mels
-    latent_dim: 32                  # Bottleneck dimension
-    encoder_layers: [128, 64, 32]   # Encoder hidden layer sizes
-    decoder_layers: [32, 64, 128]   # Decoder hidden layer sizes
+    latent_dim: 8                   # Smaller bottleneck for anomaly detection
+    encoder_layers: [64, 32, 16]    # Encoder hidden layer sizes
+    decoder_layers: [16, 32, 64]    # Decoder hidden layer sizes
     activation: "relu"              # "relu" | "leaky_relu" | "elu"
-    dropout: 0.2                    # Dropout rate
+    dropout: 0.0                    # Backward-compatible default; prefer explicit rates below
+    encoder_dropout: 0.0            # Avoid making the encoder overly robust to anomalies
+    decoder_dropout: 0.1            # Light decoder regularization only
+    output_activation: null         # Linear output for globally standardized spectrograms
 
 # ---------- Training ----------
 training:
@@ -70,6 +76,10 @@ inference:
   percentile: 95                    # For percentile-based threshold
   std_multiplier: 2.0               # For mean+std method
   fixed_threshold: null             # For fixed method
+  reconstruction_score:
+    method: "frequency_top_k"       # "mean" | "top_k" | "frequency_band" | "frequency_top_k"
+    top_k_fraction: 0.05            # Average worst 5% reconstruction errors
+    frequency_band: [0.1, 0.6]      # Focus on lower/mid mel bins where gearbox faults often appear
   latent_scorer:
     pca_components: 32              # Latent PCA dimensions for Mahalanobis scoring
     covariance_regularization: 0.000001

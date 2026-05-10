@@ -213,8 +213,13 @@ def main() -> None:
 
     score_columns: dict[str, np.ndarray] = {}
 
+    reconstruction_score_config = config.get("inference", {}).get("reconstruction_score", {})
+
     if args.score_method in {"reconstruction", "combined"}:
-        reconstruction_scorer = ReconstructionAnomalyScorer.from_model_path(str(model_path))
+        reconstruction_scorer = ReconstructionAnomalyScorer.from_model_path(
+            str(model_path),
+            score_config=reconstruction_score_config,
+        )
         reconstruction_scores, labels = reconstruction_scorer.score_dataset(dataset)
         score_columns["reconstruction_score"] = reconstruction_scores
     else:
@@ -289,6 +294,7 @@ def main() -> None:
         "split": args.split,
         "model_path": str(model_path),
         "score_method": args.score_method,
+        "reconstruction_score_config": reconstruction_score_config,
         "latent_scorer_path": str(latent_scorer_path) if latent_scorer_path else None,
         "threshold": float(threshold),
         "metrics": metrics,

@@ -12,8 +12,10 @@ Usage:
     extractor.save_as_numpy(mel_db, "output/spec.npy")
 """
 
+import json
 import os
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import librosa
@@ -41,12 +43,16 @@ class SpectrogramExtractor:
         n_mels: int = 128,
         power: float = 2.0,
         normalize: bool = True,
+        normalization_mode: str = "per_sample",
+        normalization_stats: dict[str, float] | None = None,
     ):
         self.n_fft = n_fft
         self.hop_length = hop_length
         self.n_mels = n_mels
         self.power = power
         self.normalize = normalize
+        self.normalization_mode = normalization_mode
+        self.normalization_stats = normalization_stats or {}
 
     def waveform_to_mel_spectrogram(
         self,
@@ -75,11 +81,7 @@ class SpectrogramExtractor:
         # Convert to dB scale
         mel_db = librosa.power_to_db(mel_spec, ref=np.max)
 
-        # Optional normalization to [0, 1]
-        if self.normalize:
-            mel_db = self._normalize(mel_db)
-
-        return mel_db
+        return self.apply_normalization(mel_db)
 
     def waveform_to_stft(
         self,
@@ -98,10 +100,7 @@ class SpectrogramExtractor:
         ))
         stft_db = librosa.amplitude_to_db(stft, ref=np.max)
 
-        if self.normalize:
-            stft_db = self._normalize(stft_db)
-
-        return stft_db
+        return self.apply_normalization(stft_db)
 
     def waveform_to_mfcc(
         self,
@@ -123,10 +122,7 @@ class SpectrogramExtractor:
             hop_length=self.hop_length,
         )
 
-        if self.normalize:
-            mfcc = self._normalize(mfcc)
-
-        return mfcc
+        return self.apply_normalization(mfcc)
 
     def extract(
         self,
@@ -211,11 +207,59 @@ class SpectrogramExtractor:
         save_path.parent.mkdir(parents=True, exist_ok=True)
         np.save(str(save_path), spectrogram)
 
+    def apply_normalization(self, data: np.ndarray) -> np.ndarray:
+        """Apply the configured normalization strategy."""
+        if not self.normalize:
+            return data.astype(np.float32)
+
+        mode = self.normalization_mode.lower()
+        if mode == "per_sample":
+            return self._normalize_per_sample(data).astype(np.float32)
+        if mode == "global_standard":
+            return self._normalize_global_standard(data).astype(np.float32)
+        if mode == "global_minmax":
+            return self._normalize_global_minmax(data).astype(np.float32)
+        if mode == "none":
+            return data.astype(np.float32)
+
+        raise ValueError(
+            f"Unknown normalization_mode '{self.normalization_mode}'. "
+            "Expected per_sample, global_standard, global_minmax, or none."
+        )
+
+    def _normalize_global_standard(self, data: np.ndarray) -> np.ndarray:
+        """Normalize using mean/std computed from normal training spectrograms."""
+        mean = self.normalization_stats.get("mean")
+        std = self.normalization_stats.get("std")
+        if mean is None or std is None:
+            raise ValueError("global_standard normalization requires mean and std stats.")
+        std = max(float(std), 1e-8)
+        return (data - float(mean)) / std
+
+    def _normalize_global_minmax(self, data: np.ndarray) -> np.ndarray:
+        """Scale using min/max computed from normal training spectrograms."""
+        minimum = self.normalization_stats.get("min")
+        maximum = self.normalization_stats.get("max")
+        if minimum is None or maximum is None:
+            raise ValueError("global_minmax normalization requires min and max stats.")
+        denominator = max(float(maximum) - float(minimum), 1e-8)
+        return (data - float(minimum)) / denominator
+
     @staticmethod
-    def _normalize(data: np.ndarray) -> np.ndarray:
+    def _normalize_per_sample(data: np.ndarray) -> np.ndarray:
         """Normalize array to [0, 1] range."""
         d_min = data.min()
         d_max = data.max()
         if d_max - d_min == 0:
             return np.zeros_like(data)
         return (data - d_min) / (d_max - d_min)
+
+
+def save_normalization_stats(stats: dict[str, Any], filepath: str | Path) -> Path:
+    """Save spectrogram normalization stats as JSON."""
+    filepath = Path(filepath)
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(stats, f, indent=2)
+    logger.info("Spectrogram normalization stats saved: %s", filepath)
+    return filepath
