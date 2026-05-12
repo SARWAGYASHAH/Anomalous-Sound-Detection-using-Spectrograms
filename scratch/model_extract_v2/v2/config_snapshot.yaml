@@ -1,0 +1,85 @@
+project:
+  name: anomalous-sound-detection
+  description: Autoencoder-based anomaly detection on industrial machine sounds
+  version: 0.1.0
+seed: 42
+data:
+  raw_dir: Data/raw
+  processed_dir: Data/processed
+  zip_file: Data/dev_data_gearbox.zip
+  machine_type: gearbox
+  train_split: 0.8
+audio:
+  sample_rate: 16000
+  duration: 10
+  mono: true
+spectrogram:
+  type: mel
+  n_fft: 1024
+  hop_length: 512
+  n_mels: 128
+  power: 2.0
+  normalize: true
+model:
+  type: autoencoder
+  autoencoder:
+    input_dim: 128
+    latent_dim: 32
+    encoder_layers:
+    - 128
+    - 64
+    - 32
+    decoder_layers:
+    - 32
+    - 64
+    - 128
+    activation: relu
+    dropout: 0.2
+training:
+  epochs: 50
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: adam
+  scheduler:
+    type: step
+    step_size: 10
+    gamma: 0.5
+  early_stopping:
+    enabled: true
+    patience: 10
+    min_delta: 0.0001
+  loss: mse
+inference:
+  threshold_method: percentile
+  percentile: 95
+  std_multiplier: 2.0
+  fixed_threshold: null
+  classification:
+    labels:
+    - normal
+    - follow_up
+    - alert
+    boundaries:
+    - 0.5
+    - 0.8
+versioning:
+  mode: auto
+  manual_version: null
+  base_dir: artifacts/models
+artifacts:
+  models_dir: artifacts/models
+  metadata_dir: artifacts/metadata
+  logs_dir: artifacts/logs
+mlflow:
+  enabled: true
+  tracking_uri: mlruns
+  experiment_name: gearbox_anomaly_detection
+  log_models: true
+  tags:
+    machine_type: gearbox
+    project: anomalous-sound-detection
+logging:
+  level: INFO
+  console: true
+  file: true
