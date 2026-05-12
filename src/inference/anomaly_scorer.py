@@ -36,6 +36,8 @@ def reconstruction_errors(
     method: str = "mean",
     top_k_fraction: float = 0.05,
     frequency_band: tuple[float, float] | list[float] | None = None,
+    frequency_bands: list[tuple[float, float]] | list[list[float]] | None = None,
+    band_aggregation: str = "max",
 ) -> np.ndarray:
     """
     Compute per-sample reconstruction anomaly scores.
@@ -43,9 +45,13 @@ def reconstruction_errors(
     Args:
         original: Batch of original spectrograms.
         reconstructed: Batch of reconstructed spectrograms.
-        method: mean, top_k, frequency_band, or frequency_top_k.
+        method: mean, top_k, frequency_band, frequency_top_k,
+            frequency_bands, or frequency_band_top_k.
         top_k_fraction: Fraction of highest-error pixels to average for top-k methods.
         frequency_band: Optional fractional mel-bin range, such as (0.1, 0.6).
+        frequency_bands: Optional list of fractional mel-bin ranges.
+        band_aggregation: How to combine per-band scores into one sample score:
+            max or mean.
 
     Returns:
         1D numpy array of anomaly scores.
@@ -61,6 +67,16 @@ def reconstruction_errors(
     error = np.square(original_np - reconstructed_np)
     method = method.lower()
 
+    if method in {"frequency_bands", "frequency_band_top_k"}:
+        band_scores = frequency_band_errors(
+            original_np,
+            reconstructed_np,
+            frequency_bands=frequency_bands,
+            top_k_fraction=top_k_fraction,
+            use_top_k=method == "frequency_band_top_k",
+        )
+        return _aggregate_band_scores(band_scores, band_aggregation)
+
     if method in {"frequency_band", "frequency_top_k"}:
         error = _select_frequency_band(error, frequency_band)
 
@@ -73,8 +89,56 @@ def reconstruction_errors(
 
     raise ValueError(
         f"Unknown reconstruction score method '{method}'. "
-        "Expected mean, top_k, frequency_band, or frequency_top_k."
+        "Expected mean, top_k, frequency_band, frequency_top_k, "
+        "frequency_bands, or frequency_band_top_k."
     )
+
+
+def frequency_band_errors(
+    original: np.ndarray | tf.Tensor,
+    reconstructed: np.ndarray | tf.Tensor,
+    frequency_bands: list[tuple[float, float]] | list[list[float]] | None = None,
+    top_k_fraction: float = 0.05,
+    use_top_k: bool = False,
+) -> np.ndarray:
+    """
+    Compute reconstruction error separately for each frequency band.
+
+    Returns an array with shape (num_samples, num_bands).
+    """
+    original_np = np.asarray(original)
+    reconstructed_np = np.asarray(reconstructed)
+
+    if original_np.shape != reconstructed_np.shape:
+        raise ValueError(
+            f"Shape mismatch: original={original_np.shape}, reconstructed={reconstructed_np.shape}"
+        )
+
+    if frequency_bands is None:
+        frequency_bands = [(0.0, 0.25), (0.25, 0.5), (0.5, 0.75), (0.75, 1.0)]
+
+    error = np.square(original_np - reconstructed_np)
+    band_scores = []
+
+    for band in frequency_bands:
+        band_error = _select_frequency_band(error, band)
+        if use_top_k:
+            band_scores.append(_top_k_error(band_error, top_k_fraction=top_k_fraction))
+        else:
+            axes = tuple(range(1, band_error.ndim))
+            band_scores.append(np.mean(band_error, axis=axes))
+
+    return np.stack(band_scores, axis=1).astype(np.float32)
+
+
+def _aggregate_band_scores(band_scores: np.ndarray, band_aggregation: str) -> np.ndarray:
+    """Aggregate per-band scores into one score per sample for thresholding."""
+    aggregation = band_aggregation.lower()
+    if aggregation == "max":
+        return np.max(band_scores, axis=1)
+    if aggregation == "mean":
+        return np.mean(band_scores, axis=1)
+    raise ValueError(f"Unknown band_aggregation '{band_aggregation}'. Expected max or mean.")
 
 
 def _select_frequency_band(
@@ -125,9 +189,9 @@ def summarize_scores(scores: np.ndarray) -> ScoreSummary:
 
 def compute_threshold(
     normal_scores: np.ndarray,
-    method: str = "percentile",
+    method: str = "mean_std",
     percentile: float = 95,
-    std_multiplier: float = 2.0,
+    std_multiplier: float = 2.5,
     fixed_threshold: float | None = None,
 ) -> float:
     """
@@ -190,6 +254,8 @@ class ReconstructionAnomalyScorer:
             method=self.score_config.get("method", "mean"),
             top_k_fraction=float(self.score_config.get("top_k_fraction", 0.05)),
             frequency_band=self.score_config.get("frequency_band"),
+            frequency_bands=self.score_config.get("frequency_bands"),
+            band_aggregation=self.score_config.get("band_aggregation", "max"),
         )
 
     def score_dataset(
@@ -236,8 +302,8 @@ def threshold_from_config(normal_scores: np.ndarray, config: dict[str, Any]) -> 
     inference_config = config.get("inference", {})
     return compute_threshold(
         normal_scores=normal_scores,
-        method=inference_config.get("threshold_method", "percentile"),
+        method=inference_config.get("threshold_method", "mean_std"),
         percentile=float(inference_config.get("percentile", 95)),
-        std_multiplier=float(inference_config.get("std_multiplier", 2.0)),
+        std_multiplier=float(inference_config.get("std_multiplier", 2.5)),
         fixed_threshold=inference_config.get("fixed_threshold"),
     )
