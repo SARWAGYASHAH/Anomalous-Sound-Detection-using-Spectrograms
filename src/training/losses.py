@@ -37,22 +37,6 @@ def ssim_reconstruction_loss(y_true: tf.Tensor, y_pred: tf.Tensor) -> tf.Tensor:
     return 1.0 - ssim
 
 
-@tf.keras.utils.register_keras_serializable(package="anomalous_sound_detection")
-def combined_mse_ssim_loss(
-    y_true: tf.Tensor,
-    y_pred: tf.Tensor,
-    alpha: float = 0.7,
-) -> tf.Tensor:
-    """
-    Combine pixel-level MSE with structural SSIM reconstruction loss.
-
-    Spectrograms are expected to be normalized to [0, 1].
-    """
-    mse = tf.reduce_mean(tf.square(y_true - y_pred))
-    ssim = 1.0 - tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))
-    return alpha * mse + (1.0 - alpha) * ssim
-
-
 def get_loss(name: str) -> str | Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
     """
     Resolve a configured loss name to a Keras-compatible loss.
@@ -63,7 +47,6 @@ def get_loss(name: str) -> str | Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
         reconstruction_mse
         reconstruction_mae
         ssim
-        combined_mse_ssim
         custom
     """
     normalized = name.lower()
@@ -78,11 +61,8 @@ def get_loss(name: str) -> str | Callable[[tf.Tensor, tf.Tensor], tf.Tensor]:
         return reconstruction_mae
     if normalized == "ssim":
         return ssim_reconstruction_loss
-    if normalized in {"combined", "combined_mse_ssim", "mse_ssim"}:
-        return combined_mse_ssim_loss
 
     raise ValueError(
         f"Unknown loss '{name}'. Expected one of: "
-        "mse, mae, reconstruction_mse, reconstruction_mae, ssim, "
-        "combined_mse_ssim, custom."
+        "mse, mae, reconstruction_mse, reconstruction_mae, ssim, custom."
     )

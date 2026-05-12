@@ -35,57 +35,41 @@ spectrogram:
   n_mels: 128                       # Number of mel bands (for mel spectrograms)
   power: 2.0                        # Power for spectrogram magnitude
   normalize: true                   # Normalize spectrograms
-  normalization_mode: "global_minmax"    # Keep mel spectrograms in [0, 1] for sigmoid + SSIM loss
-  stats_path: "artifacts/preprocessing/spectrogram_stats.json"
-  reuse_stats: false                # Recompute stats during preprocessing unless explicitly reused
 
 # ---------- Model ----------
 model:
   type: "autoencoder"               # "autoencoder" | future models
   autoencoder:
     input_dim: 128                  # Must match n_mels
-    input_time_frames: 320          # Expected spectrogram width
-    latent_dim: 32                  # Dense bottleneck size; try 64 as the next sweep
-    encoder_layers: [128, 64, 32]   # Encoder conv filters
-    decoder_layers: [32, 64, 128]   # Decoder mirrors encoder channel-for-channel
+    latent_dim: 32                  # Bottleneck dimension
+    encoder_layers: [128, 64, 32]   # Encoder hidden layer sizes
+    decoder_layers: [32, 64, 128]   # Decoder hidden layer sizes
     activation: "relu"              # "relu" | "leaky_relu" | "elu"
-    dropout: 0.0                    # Backward-compatible default; prefer explicit rates below
-    encoder_dropout: 0.1            # Light encoder regularization
-    decoder_dropout: 0.2            # Stronger decoder regularization
-    output_activation: "sigmoid"    # Matches [0, 1] normalized spectrograms
+    dropout: 0.2                    # Dropout rate
 
 # ---------- Training ----------
 training:
-  epochs: 80
-  batch_size: 16
-  learning_rate: 0.0003
+  epochs: 50
+  batch_size: 32
+  learning_rate: 0.001
   weight_decay: 0.0001              # L2 regularization
   optimizer: "adam"                  # "adam" | "sgd" | "adamw"
   scheduler:
     type: "step"                    # "step" | "cosine" | "none"
-    step_size: 15                   # StepLR: decay every N epochs
-    gamma: 0.7                      # StepLR: multiplicative factor
+    step_size: 10                   # StepLR: decay every N epochs
+    gamma: 0.5                      # StepLR: multiplicative factor
   early_stopping:
     enabled: true
-    patience: 15                    # Stop after N epochs with no improvement
+    patience: 10                    # Stop after N epochs with no improvement
     min_delta: 0.0001               # Minimum improvement threshold
-  loss: "combined_mse_ssim"         # MSE + SSIM combined reconstruction loss
+  loss: "mse"                       # "mse" | "mae" | "custom"
 
 # ---------- Inference / Anomaly Detection ----------
 inference:
-  threshold_method: "mean_std"      # "percentile" | "mean_std" | "fixed"
+  threshold_method: "percentile"    # "percentile" | "mean_std" | "fixed"
   percentile: 95                    # For percentile-based threshold
-  std_multiplier: 2.5               # threshold = mean_train_error + 2.5 * std_train_error
+  std_multiplier: 2.0               # For mean+std method
   fixed_threshold: null             # For fixed method
-  reconstruction_score:
-    method: "frequency_band_top_k"  # Compute errors per band, then aggregate
-    top_k_fraction: 0.05            # Average worst 5% reconstruction errors
-    frequency_bands: [[0.0, 0.25], [0.25, 0.5], [0.5, 0.75], [0.75, 1.0]]
-    band_aggregation: "max"         # Let a localized frequency-band anomaly drive the score
-  latent_scorer:
-    pca_components: 32              # Latent PCA dimensions for Mahalanobis scoring
-    covariance_regularization: 0.000001
-    combined_weight: 0.5            # In combined mode, weight assigned to latent score
   classification:
     labels: ["normal", "follow_up", "alert"]
     boundaries: [0.5, 0.8]          # Score boundaries between labels

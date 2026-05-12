@@ -44,15 +44,12 @@ class Conv2DAutoencoder(BaseModel):
 
     def __init__(
         self,
-        input_shape: tuple[int | None, int | None, int] = (128, 320, 1),
+        input_shape: tuple[int | None, int | None, int] = (128, None, 1),
         latent_dim: int = 32,
         encoder_layers: list[int] | tuple[int, ...] = (128, 64, 32),
         decoder_layers: list[int] | tuple[int, ...] = (32, 64, 128),
         activation: str = "relu",
         dropout: float = 0.2,
-        encoder_dropout: float | None = None,
-        decoder_dropout: float | None = None,
-        output_activation: str | None = "sigmoid",
         config: dict[str, Any] | None = None,
         name: str | None = "conv2d_autoencoder",
     ):
@@ -63,22 +60,16 @@ class Conv2DAutoencoder(BaseModel):
         self.decoder_layers = tuple(int(filters) for filters in decoder_layers)
         self.activation = activation
         self.dropout = float(dropout)
-        self.encoder_dropout = float(dropout if encoder_dropout is None else encoder_dropout)
-        self.decoder_dropout = float(dropout if decoder_dropout is None else decoder_dropout)
-        self.output_activation = output_activation
 
         self.encoder = self._build_encoder()
-        self.bottleneck: tf.keras.Sequential | None = None
         self.decoder = self._build_decoder()
         self.output_layer = tf.keras.layers.Conv2D(
             filters=self.input_spec_shape[-1],
             kernel_size=3,
             padding="same",
-            activation=self.output_activation,
+            activation="sigmoid",
             name="reconstruction",
         )
-        if self.input_spec_shape[0] is not None and self.input_spec_shape[1] is not None:
-            self._init_bottleneck_layers(self._encoded_shape_for(self.input_spec_shape))
 
     def _build_encoder(self) -> tf.keras.Sequential:
         layers: list[tf.keras.layers.Layer] = []
@@ -99,48 +90,24 @@ class Conv2DAutoencoder(BaseModel):
                 ]
             )
 
-            if self.encoder_dropout > 0:
-                layers.append(tf.keras.layers.Dropout(self.encoder_dropout, name=f"encoder_dropout_{index + 1}"))
+            if self.dropout > 0:
+                layers.append(tf.keras.layers.Dropout(self.dropout, name=f"encoder_dropout_{index + 1}"))
+
+        layers.extend(
+            [
+                tf.keras.layers.Conv2D(
+                    filters=self.latent_dim,
+                    kernel_size=3,
+                    padding="same",
+                    use_bias=False,
+                    name="bottleneck_conv",
+                ),
+                tf.keras.layers.BatchNormalization(name="bottleneck_bn"),
+                _activation_layer(self.activation),
+            ]
+        )
 
         return tf.keras.Sequential(layers, name="encoder")
-
-    def _encoded_shape_for(
-        self,
-        input_shape: tuple[int | None, int | None, int] | tf.TensorShape,
-    ) -> tuple[int, int, int]:
-        """Compute the encoder feature-map shape after stride-2 same convolutions."""
-        shape = tuple(tf.TensorShape(input_shape).as_list())
-        height, width = shape[0], shape[1]
-
-        if height is None or width is None:
-            raise ValueError(
-                "Dense bottleneck requires fixed spectrogram height and width. "
-                "Pass input_shape=(n_mels, time_frames, channels), e.g. (128, 320, 1)."
-            )
-
-        for _ in self.encoder_layers:
-            height = (int(height) + 1) // 2
-            width = (int(width) + 1) // 2
-
-        return int(height), int(width), int(self.encoder_layers[-1])
-
-    def _init_bottleneck_layers(self, encoded_shape: tuple[int, int, int]) -> None:
-        """Create the Flatten -> Dense(latent) -> Dense -> Reshape bottleneck."""
-        if self.bottleneck is not None:
-            return
-
-        flattened_units = int(encoded_shape[0] * encoded_shape[1] * encoded_shape[2])
-        self.bottleneck = tf.keras.Sequential(
-            [
-                tf.keras.layers.Flatten(name="bottleneck_flatten"),
-                tf.keras.layers.Dense(self.latent_dim, name="latent_vector"),
-                _activation_layer(self.activation),
-                tf.keras.layers.Dense(flattened_units, name="bottleneck_expand"),
-                _activation_layer(self.activation),
-                tf.keras.layers.Reshape(encoded_shape, name="bottleneck_reshape"),
-            ],
-            name="dense_bottleneck",
-        )
 
     def _build_decoder(self) -> tf.keras.Sequential:
         layers: list[tf.keras.layers.Layer] = []
@@ -161,22 +128,14 @@ class Conv2DAutoencoder(BaseModel):
                 ]
             )
 
-            if self.decoder_dropout > 0:
-                layers.append(tf.keras.layers.Dropout(self.decoder_dropout, name=f"decoder_dropout_{index + 1}"))
+            if self.dropout > 0:
+                layers.append(tf.keras.layers.Dropout(self.dropout, name=f"decoder_dropout_{index + 1}"))
 
         return tf.keras.Sequential(layers, name="decoder")
 
-    def build(self, input_shape: tf.TensorShape) -> None:
-        """Build layers that depend on the static spectrogram width."""
-        self._init_bottleneck_layers(self._encoded_shape_for(input_shape[1:]))
-        super().build(input_shape)
-
     def encode(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
         """Encode spectrograms into bottleneck feature maps."""
-        encoded = self.encoder(inputs, training=training)
-        if self.bottleneck is None:
-            self._init_bottleneck_layers(self._encoded_shape_for(inputs.shape[1:]))
-        return self.bottleneck(encoded, training=training)
+        return self.encoder(inputs, training=training)
 
     def decode(
         self,
@@ -186,26 +145,14 @@ class Conv2DAutoencoder(BaseModel):
     ) -> tf.Tensor:
         """Decode bottleneck feature maps and resize to the original input size."""
         decoded = self.decoder(encoded, training=training)
-        reconstruction = self.output_layer(decoded, training=training)
-        reconstruction = tf.image.resize_with_crop_or_pad(
-            reconstruction,
-            target_height=output_size[0],
-            target_width=output_size[1],
-        )
-        return reconstruction
+        decoded = tf.image.resize(decoded, size=output_size, method="bilinear")
+        return self.output_layer(decoded, training=training)
 
     def call(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
         """Reconstruct a batch of spectrograms with the same shape as inputs."""
         output_size = tf.shape(inputs)[1:3]
         encoded = self.encode(inputs, training=training)
-        reconstruction = self.decode(encoded, output_size=output_size, training=training)
-        shape_check = tf.debugging.assert_equal(
-            tf.shape(reconstruction)[1:3],
-            tf.shape(inputs)[1:3],
-            message="Autoencoder output spatial shape must match input spatial shape.",
-        )
-        with tf.control_dependencies([shape_check]):
-            return tf.identity(reconstruction)
+        return self.decode(encoded, output_size=output_size, training=training)
 
     def get_config(self) -> dict[str, Any]:
         """Return serializable Keras config."""
@@ -217,9 +164,6 @@ class Conv2DAutoencoder(BaseModel):
             "decoder_layers": self.decoder_layers,
             "activation": self.activation,
             "dropout": self.dropout,
-            "encoder_dropout": self.encoder_dropout,
-            "decoder_dropout": self.decoder_dropout,
-            "output_activation": self.output_activation,
         }
 
     @classmethod
@@ -251,8 +195,7 @@ def build_autoencoder(
 
     if input_shape is None:
         input_dim = cfg.get("input_dim", 128)
-        input_time_frames = cfg.get("input_time_frames", 320)
-        input_shape = (input_dim, input_time_frames, 1)
+        input_shape = (input_dim, None, 1)
 
     return Conv2DAutoencoder(
         input_shape=input_shape,
@@ -261,8 +204,5 @@ def build_autoencoder(
         decoder_layers=cfg.get("decoder_layers", (32, 64, 128)),
         activation=cfg.get("activation", "relu"),
         dropout=cfg.get("dropout", 0.2),
-        encoder_dropout=cfg.get("encoder_dropout"),
-        decoder_dropout=cfg.get("decoder_dropout"),
-        output_activation=cfg.get("output_activation", "sigmoid"),
         config=cfg,
     )
