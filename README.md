@@ -1,472 +1,208 @@
-# 🔊 Anomalous Sound Detection — Pseudo-MLOps Pipeline
+# Anomalous Sound Detection
 
-> An unsupervised anomaly detection system for industrial machine sounds, built with a lightweight pseudo-MLOps architecture. Detects abnormal gearbox sounds using a Conv2D Autoencoder trained on mel spectrograms.
+Keras autoencoder pipeline for detecting anomalous industrial machine sounds
+from mel spectrograms. The current project is focused on the ML workflow only:
+preprocessing, training, evaluation, and single-file prediction.
 
----
+## Current Status
 
-## 📌 Table of Contents
+- TensorFlow/Keras model foundation and Conv2D autoencoder are implemented.
+- Training runs through `model.compile()` and `model.fit()` with checkpointing,
+  early stopping, MLflow logging, versioned model folders, and metadata.
+- Full training is intended for Google Colab; local execution is for tests and
+  dry checks.
+- Reconstruction-error scoring, threshold helpers, severity classification,
+  evaluation metrics, and WAV prediction are implemented.
+- Optional Mahalanobis helper functions remain available in
+  `src/inference/anomaly_scorer.py` for future scoring experiments.
+- No backend or user interface is part of this phase.
 
-- [Project Overview](#project-overview)
-- [How It Works](#how-it-works)
-- [Project Structure](#project-structure)
-- [MLOps Features](#mlops-features)
-- [Setup Guide](#setup-guide)
-- [Running on Google Colab](#running-on-google-colab)
-- [Pipeline Execution](#pipeline-execution)
-- [Configuration](#configuration)
-- [Artifact Versioning](#artifact-versioning)
-- [Experiment Tracking](#experiment-tracking)
-- [File Responsibilities](#file-responsibilities)
-- [Build Roadmap](#build-roadmap)
+## Flow
 
----
-
-## 🧠 Project Overview
-
-This project detects anomalous sounds in industrial machinery (gearbox) using an **unsupervised autoencoder-based approach**. No labeled anomaly data is needed during training — the model learns what "normal" sounds like and flags anything that deviates significantly.
-
-| Property | Detail |
-|---|---|
-| **Task** | Unsupervised Anomaly Detection |
-| **Domain** | Industrial Sound / Predictive Maintenance |
-| **Model** | Conv2D Autoencoder |
-| **Input** | Raw `.wav` audio files |
-| **Output** | Anomaly score + severity label (Normal / Medium / Severe) |
-| **Framework** | TensorFlow / Keras |
-| **MLOps Tools** | MLflow, YAML configs, versioned artifacts |
-| **Compute** | Google Colab (T4 GPU) + Google Drive storage |
-
----
-
-## ⚙️ How It Works
-
-```
-Raw .wav Audio
-      ↓
-audio_loader.py     →    Load + Resample to 16kHz
-      ↓
-spectrogram.py      →    STFT → Mel Scale → dB → Save as .png
-      ↓
-dataset.py          →    Wrap PNGs into tf.data.Dataset
-      ↓
-autoencoder.py      →    Conv2D Encoder-Decoder (trained on normal sounds only)
-      ↓
-anomaly_scorer.py   →    Reconstruction Error → Mahalanobis + PCA Score
-      ↓
-classifier.py       →    Score → Normal / Medium / Severe
+```text
+.wav audio
+  -> AudioLoader
+  -> mel SpectrogramExtractor: (128, 313, 1)
+  -> Conv2D Keras autoencoder
+  -> reconstruction MSE score
+  -> train-normal threshold
+  -> normal / follow_up / alert
 ```
 
-### Core Idea
+## Project Layout
 
-- Autoencoder is trained **exclusively on normal sounds**
-- It learns to reconstruct normal audio well
-- When **abnormal audio** is passed through, reconstruction error is **high**
-- That error becomes the anomaly score
-
----
-
-## 📁 Project Structure
-
-```
-anomalous-sound-detection/
-│
-├── data/
-│   ├── raw/
-│   │   └── gearbox/
-│   │       ├── train/          # normal sounds only (.wav)
-│   │       ├── source_test/    # test audio
-│   │       └── target_test/
-│   └── processed/
-│       ├── train/              # mel spectrograms (.png)
-│       ├── source_test/
-│       └── target_test/
-│
-├── src/
-│   ├── __init__.py
-│   ├── data/
-│   │   ├── __init__.py
-│   │   ├── audio_loader.py     # .wav → numpy audio array
-│   │   ├── spectrogram.py      # audio → mel spectrogram → .png
-│   │   └── dataset.py          # .png → tf.data / torch Dataset
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── base_model.py       # abstract model interface
-│   │   └── autoencoder.py      # Conv2D encoder-decoder
-│   ├── training/
-│   │   ├── __init__.py
-│   │   ├── trainer.py          # fit loop + MLflow + seed + versioning
-│   │   └── losses.py           # MSE + custom loss functions
-│   ├── inference/
-│   │   ├── __init__.py
-│   │   ├── anomaly_scorer.py   # Mahalanobis + PCA scoring
-│   │   ├── classifier.py       # score → severity label
-│   │   └── predictor.py        # end-to-end single file prediction
-│   └── utils/
-│       ├── __init__.py
-│       ├── logger.py           # console + timestamped file logging
-│       ├── versioning.py       # auto v1/v2/v3 artifact versioning
-│       ├── metrics.py          # AUC, pAUC calculation
-│       └── visualization.py   # spectrogram + score plots (notebooks only)
-│
-├── pipelines/
-│   ├── 01_preprocess.py        # raw audio → spectrograms
-│   ├── 02_train.py             # train autoencoder
-│   ├── 03_evaluate.py          # compute AUC / pAUC on test set
-│   └── 04_predict.py           # predict on new audio file
-│
-├── configs/
-│   ├── default.yaml            # all paths, hyperparams, mlflow, seed
-│   └── experiment_01.yaml      # override file for specific experiments
-│
-├── artifacts/
-│   ├── models/
-│   │   ├── v1/                 # versioned model checkpoints
-│   │   ├── v2/
-│   │   └── latest -> v2/       # symlink to latest version
-│   ├── metadata/
-│   │   ├── run_v1.json         # params + metrics per run
-│   │   └── run_v2.json
-│   └── logs/
-│       └── run_20240601_143022.log
-│
-├── notebooks/
-│   ├── 00_setup.ipynb          # drive mount + installs + sys.path
-│   ├── 01_preprocess.ipynb     # EDA + audio exploration
-│   ├── 02_train.ipynb          # training + monitoring
-│   ├── 03_evaluate.ipynb       # evaluation + score analysis
-│   ├── 04_predict.ipynb        # single file prediction
-│   └── 05_full_pipeline.ipynb  # end-to-end run
-│
-├── tests/
-│   ├── test_spectrogram.py
-│   ├── test_model.py
-│   └── test_scorer.py
-│
-├── mlruns/                     # auto-created by MLflow
-├── run_pipeline.py             # master orchestrator script
-├── Makefile                    # command shortcuts
-├── setup.py                    # makes src/ importable as package
-├── requirements.txt            # pinned dependencies
-├── environment.yml             # conda environment definition
-└── README.md
+```text
+config/
+  default.yaml              Base settings
+  experiment_01.yaml        Experiment overrides
+pipeline/
+  01_preprocess.py          WAV files to processed .npy spectrograms
+  02_train.py               Keras training and model artifacts
+  03_evaluate.py            Metrics, plots, and evaluation metadata
+  04_predict.py             Single WAV prediction
+src/
+  data/                     Audio, spectrogram, and tf.data utilities
+  models/                   Keras base model and Conv2D autoencoder
+  training/                 Losses and Keras trainer
+  inference/                Scoring, severity classification, prediction
+  utils/                    Logging, metrics, seeds, metadata, plots
+tests/                      Lightweight shape and inference tests
+notebooks/
+  06_keras_colab_training.ipynb
+artifacts/                  Generated models, metadata, plots, and logs
+run_pipeline.py             Command-line stage orchestrator
 ```
 
----
+Processed data is expected below:
 
-## 🏗️ MLOps Features
-
-| MLOps Principle | Implementation |
-|---|---|
-| **Experiment Tracking** | MLflow logs params, metrics, and artifacts per run |
-| **Artifact Versioning** | Auto-increments `v1/`, `v2/`, `v3/` folders |
-| **Config-Driven** | All settings in `configs/*.yaml` — zero hardcoding |
-| **Reproducibility** | Global seed set in config, applied to all libraries |
-| **Structured Logging** | Timestamped log files saved to `artifacts/logs/` |
-| **Metadata Tracking** | JSON saved per run in `artifacts/metadata/` |
-| **Pipeline Orchestration** | `run_pipeline.py` chains all 4 stages in order |
-| **Modular Architecture** | Each module has a single clear responsibility |
-| **Testability** | Independent unit tests per module |
-
----
-
-## 🛠️ Setup Guide
-
-### Option A — Local Machine
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/yourname/anomalous-sound-detection.git
-cd anomalous-sound-detection
-
-# 2. Create conda environment
-conda env create -f environment.yml
-conda activate anomaly-detection
-
-# 3. Install src as importable package
-pip install -e .
-
-# 4. Verify setup
-python -c "from src.utils.logger import get_logger; print('Setup OK')"
+```text
+Data/processed/
+  train/normal/*.npy
+  source_test/normal/*.npy
+  source_test/anomaly/*.npy
+  target_test/normal/*.npy
+  target_test/anomaly/*.npy
 ```
 
-### Option B — pip only
+The preprocessing stage reads raw WAV files from `Data/gearbox/` by default,
+based on `data.machine_type` in `config/default.yaml`.
+
+## Setup
+
+Local environment:
 
 ```bash
 pip install -r requirements.txt
 pip install -e .
+python -m pytest -q
 ```
 
----
-
-## ☁️ Running on Google Colab
-
-This project is designed to run on **Google Colab with Google Drive** as persistent storage.
-
-> **Strategy: Google Drive = Storage | Colab = Compute**
-
-### Every Session — Run These 3 Cells First
-
-**Cell 1 — Mount Drive**
-```python
-from google.colab import drive
-drive.mount('/content/drive')
-```
-
-**Cell 2 — Set Project Root**
-```python
-import os, sys
-PROJECT_ROOT = "/content/drive/MyDrive/anomalous-sound-detection"
-os.chdir(PROJECT_ROOT)
-sys.path.insert(0, PROJECT_ROOT)
-```
-
-**Cell 3 — Install Dependencies**
-```python
-!pip install -q librosa mlflow pyyaml scikit-learn tensorflow
-```
-
-### Enable GPU
-
-`Runtime → Change Runtime Type → T4 GPU`
-
-```python
-import tensorflow as tf
-print(tf.config.list_physical_devices('GPU'))  # Should show GPU
-```
-
-### MLflow UI on Colab
-
-```python
-!pip install -q pyngrok
-from pyngrok import ngrok
-!mlflow ui --port 5000 &
-print(ngrok.connect(5000))   # Opens public URL
-```
-
----
-
-## 🚀 Pipeline Execution
-
-### Run Full Pipeline (Recommended)
+Colab can use the lightweight requirements file because TensorFlow is already
+available in the runtime:
 
 ```bash
-python run_pipeline.py
-# or
-make all
+pip install -r requirements-colab.txt
+pip install -e .
 ```
 
-### Run Individual Stages
+## Local Checks
+
+Preprocess the raw dataset:
 
 ```bash
-# Stage 1 — Preprocess raw audio → spectrograms
-python pipelines/01_preprocess.py
-
-# Stage 2 — Train autoencoder
-python pipelines/02_train.py
-
-# Stage 3 — Evaluate on test set
-python pipelines/03_evaluate.py
-
-# Stage 4 — Predict on new audio
-python pipelines/04_predict.py --file data/raw/gearbox/target_test/sample.wav
+python pipeline/01_preprocess.py --config config/default.yaml
 ```
 
-### Makefile Shortcuts
+Build datasets and the Keras model and run one batch without training:
 
 ```bash
-make preprocess    # run stage 1
-make train         # run stage 2
-make evaluate      # run stage 3
-make predict       # run stage 4
-make all           # run full pipeline
-make test          # run all tests
-make clean         # clear pycache
+python pipeline/02_train.py --config config/default.yaml --dry-run --no-mlflow
 ```
 
----
+Evaluate an existing saved model:
 
-## ⚙️ Configuration
+```bash
+python pipeline/03_evaluate.py --config config/default.yaml --model-path artifacts/models/v2/best_model.keras
+```
 
-All settings live in `configs/default.yaml`. **Never hardcode values in Python files.**
+Predict one WAV file:
+
+```bash
+python pipeline/04_predict.py --config config/default.yaml --model-path artifacts/models/v2/best_model.keras --file Data/gearbox/source_test/section_00_source_test_normal_0000.wav
+```
+
+When `--model-path` is omitted, evaluation and prediction select the newest
+available `.keras` artifact automatically.
+
+## Colab Training
+
+Use `notebooks/06_keras_colab_training.ipynb` to mount Drive, install
+dependencies, preprocess or restore processed files, and run training:
+
+```bash
+python pipeline/02_train.py --config config/default.yaml
+python pipeline/03_evaluate.py --config config/default.yaml
+```
+
+Each real training run writes a versioned directory:
+
+```text
+artifacts/models/v1/
+  model.keras               Canonical saved model
+  best_model.keras          Lowest monitored loss checkpoint
+  final_model.keras         Final trainer save
+  config_snapshot.yaml
+  training_log.csv
+```
+
+Training metadata is written to `artifacts/metadata/`; MLflow files are written
+under `mlruns/` when `mlflow.enabled` is true.
+
+## Orchestration
+
+The orchestrator prevents accidental full local training unless explicitly
+enabled.
+
+Local one-batch workflow:
+
+```bash
+python run_pipeline.py --config config/default.yaml --stages train --train-dry-run
+python run_pipeline.py --config config/default.yaml --stages evaluate predict --model-path artifacts/models/v2/best_model.keras --predict-file path/to/file.wav
+```
+
+Full Colab workflow:
+
+```bash
+python run_pipeline.py --config config/default.yaml --allow-training
+```
+
+Add `--predict-file path/to/file.wav` to run prediction after evaluation.
+
+Make shortcuts:
+
+```bash
+make train-dry
+make evaluate MODEL=artifacts/models/v2/best_model.keras
+make predict MODEL=artifacts/models/v2/best_model.keras AUDIO=path/to/file.wav
+make pipeline-colab
+```
+
+## Evaluation Artifacts
+
+`pipeline/03_evaluate.py` fits the anomaly threshold using processed normal
+training samples and evaluates labeled test samples. It saves:
+
+```text
+artifacts/evaluation/source_test/
+  metrics.json
+  scores.csv
+  anomaly_score_distribution.png
+  roc_curve.png
+artifacts/metadata/run_evaluation_*.json
+```
+
+Reported metrics include AUC, partial AUC, average precision, precision,
+recall, F1, and confusion matrix counts.
+
+## Configuration
+
+Important settings in `config/default.yaml`:
 
 ```yaml
-paths:
-  data_raw:        data/raw/gearbox
-  data_processed:  data/processed
-  artifacts:       artifacts
-
-versioning:
-  mode: auto            # auto = increment version, manual = use below
-  manual_version: v1
-
-mlflow:
-  experiment_name: anomaly-detection
-  tracking_uri: mlruns
-
-training:
-  epochs:        50
-  batch_size:    32
-  learning_rate: 0.001
-  seed:          42
+model:
+  autoencoder:
+    input_dim: 128
+    latent_dim: 32
 
 inference:
-  threshold_normal: 0.5
-  threshold_severe: 0.8
+  threshold_method: percentile
+  percentile: 95
+  classification:
+    labels: [normal, follow_up, alert]
+    boundaries: [0.5, 0.8]
 ```
 
-### Running a Custom Experiment
-
-Create `configs/experiment_01.yaml` with only the values you want to override:
-
-```yaml
-training:
-  learning_rate: 0.0005
-  epochs: 100
-
-mlflow:
-  experiment_name: anomaly-detection-exp01
-```
-
-Then run:
-
-```bash
-python pipelines/02_train.py --config configs/experiment_01.yaml
-```
-
----
-
-## 📦 Artifact Versioning
-
-Every training run creates a new versioned folder automatically:
-
-```
-artifacts/
-└── models/
-    ├── v1/                   # first run
-    │   └── autoencoder.h5
-    ├── v2/                   # second run
-    │   └── autoencoder.h5
-    └── latest -> v2/         # always points to newest
-```
-
-Version is auto-incremented by scanning existing folders. To use a specific version set `versioning.mode: manual` in config.
-
----
-
-## 📊 Experiment Tracking
-
-Each run generates:
-
-**MLflow** — logged to `mlruns/` (view with `mlflow ui`)
-- Parameters: learning rate, epochs, batch size, seed, version
-- Metrics: train loss, val loss per epoch
-- Artifacts: model file, metadata JSON
-
-**Metadata JSON** — saved to `artifacts/metadata/run_vN.json`
-
-```json
-{
-    "version": "v1",
-    "run_id": "abc123def456",
-    "timestamp": "2024-06-01T14:30:22",
-    "params": {
-        "learning_rate": 0.001,
-        "epochs": 50,
-        "batch_size": 32,
-        "seed": 42
-    },
-    "metrics": {
-        "final_val_loss": 0.003421
-    },
-    "artifacts": {
-        "model_path": "artifacts/models/v1/autoencoder.h5"
-    }
-}
-```
-
-**Log File** — saved to `artifacts/logs/run_YYYYMMDD_HHMMSS.log`
-
----
-
-## 📋 File Responsibilities
-
-| File | Single Job |
-|---|---|
-| `audio_loader.py` | `.wav` path → clean numpy audio array |
-| `spectrogram.py` | Audio array → mel spectrogram → saved `.png` |
-| `dataset.py` | `.png` files → batched tf.data / torch Dataset |
-| `autoencoder.py` | Define Conv2D encoder-decoder architecture |
-| `trainer.py` | Fit loop + MLflow logging + seed + save artifacts |
-| `losses.py` | MSE + custom loss function definitions |
-| `anomaly_scorer.py` | Reconstruction error → Mahalanobis + PCA score |
-| `classifier.py` | Score → Normal / Medium / Severe label |
-| `predictor.py` | End-to-end prediction on a single audio file |
-| `logger.py` | Console + timestamped file logging |
-| `versioning.py` | Auto v1/v2/v3 version resolution |
-| `metrics.py` | AUC and pAUC calculation |
-| `visualization.py` | Plot spectrograms and scores in notebooks |
-
----
-
-## 🗺️ Build Roadmap
-
-```
-Phase 1  →  Environment setup + imports verified
-Phase 2  →  configs/default.yaml written
-Phase 3  →  Utils — logger, versioning, metrics, visualization
-Phase 4  →  Data layer — audio_loader, spectrogram, dataset, 01_preprocess
-Phase 5  →  Model — base_model, autoencoder
-Phase 6  →  Training — losses, trainer, 02_train + MLflow verified
-Phase 7  →  Inference — scorer, classifier, predictor, 03_evaluate, 04_predict
-Phase 8  →  Orchestration — run_pipeline.py + Makefile
-Phase 9  →  Tests — test_spectrogram, test_model, test_scorer
-Phase 10 →  Full clean run verification
-```
-
----
-
-## 🧪 Running Tests
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run specific test
-pytest tests/test_spectrogram.py -v
-```
-
----
-
-## 📦 Requirements
-
-```
-tensorflow>=2.12.0
-librosa>=0.10.1
-numpy>=1.23.0
-scikit-learn>=1.3.0
-mlflow>=2.5.0
-pyyaml>=6.0
-matplotlib>=3.7.0
-```
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch — `git checkout -b feature/your-feature`
-3. Follow existing module structure and naming conventions
-4. Add tests for any new functionality
-5. Submit a pull request
-
----
-
-## 📄 License
-
-MIT License — see `LICENSE` file for details.
-
----
-
-## 👤 Author
-
-Built as a portfolio project demonstrating pseudo-MLOps practices on a real-world audio anomaly detection problem.
+Severity boundaries apply to score divided by the learned anomaly threshold:
+scores reaching the threshold set `crosses_threshold` for strict metric
+reporting, while lower relative scores can still be marked as requiring
+attention by the severity policy.

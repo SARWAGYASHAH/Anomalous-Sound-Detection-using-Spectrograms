@@ -195,6 +195,7 @@ def main() -> None:
     history, artifacts = trainer.fit(train_dataset, val_dataset)
 
     logger.info("Training history keys: %s", list(history.history.keys()))
+    logger.info("Model: %s", artifacts.model_path)
     logger.info("Best model: %s", artifacts.best_model_path)
     logger.info("Final model: %s", artifacts.final_model_path)
     logger.info("Metadata: %s", artifacts.metadata_path)

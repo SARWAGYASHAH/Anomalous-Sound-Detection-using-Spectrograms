@@ -29,6 +29,7 @@ class TrainingArtifacts:
 
     run_id: str
     version_dir: Path
+    model_path: Path
     best_model_path: Path
     final_model_path: Path
     config_snapshot_path: Path
@@ -65,6 +66,7 @@ class KerasTrainer:
         self.config_snapshot_path = versioner.save_config_snapshot(self.version_dir, config)
 
         self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.model_path = self.version_dir / "model.keras"
         self.best_model_path = self.version_dir / "best_model.keras"
         self.final_model_path = self.version_dir / "final_model.keras"
         self.history: tf.keras.callbacks.History | None = None
@@ -118,10 +120,12 @@ class KerasTrainer:
 
         self.history = history
         self.model.save(self.final_model_path)
+        self.model.save(self.model_path)
 
         artifacts = TrainingArtifacts(
             run_id=self.run_id,
             version_dir=self.version_dir,
+            model_path=self.model_path,
             best_model_path=self.best_model_path,
             final_model_path=self.final_model_path,
             config_snapshot_path=self.config_snapshot_path,
@@ -275,6 +279,7 @@ class KerasTrainer:
             metrics=metrics,
             artifacts={
                 "version_dir": str(artifacts.version_dir),
+                "model_path": str(artifacts.model_path),
                 "best_model_path": str(artifacts.best_model_path),
                 "final_model_path": str(artifacts.final_model_path),
                 "config_snapshot_path": str(artifacts.config_snapshot_path),

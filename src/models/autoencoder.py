@@ -50,6 +50,9 @@ class Conv2DAutoencoder(BaseModel):
         decoder_layers: list[int] | tuple[int, ...] = (32, 64, 128),
         activation: str = "relu",
         dropout: float = 0.2,
+        encoder_dropout: float | None = None,
+        decoder_dropout: float | None = None,
+        output_activation: str | None = "sigmoid",
         config: dict[str, Any] | None = None,
         name: str | None = "conv2d_autoencoder",
     ):
@@ -60,6 +63,9 @@ class Conv2DAutoencoder(BaseModel):
         self.decoder_layers = tuple(int(filters) for filters in decoder_layers)
         self.activation = activation
         self.dropout = float(dropout)
+        self.encoder_dropout = float(dropout if encoder_dropout is None else encoder_dropout)
+        self.decoder_dropout = float(dropout if decoder_dropout is None else decoder_dropout)
+        self.output_activation = output_activation
 
         self.encoder = self._build_encoder()
         self.decoder = self._build_decoder()
@@ -67,7 +73,7 @@ class Conv2DAutoencoder(BaseModel):
             filters=self.input_spec_shape[-1],
             kernel_size=3,
             padding="same",
-            activation="sigmoid",
+            activation=self.output_activation,
             name="reconstruction",
         )
 
@@ -90,8 +96,8 @@ class Conv2DAutoencoder(BaseModel):
                 ]
             )
 
-            if self.dropout > 0:
-                layers.append(tf.keras.layers.Dropout(self.dropout, name=f"encoder_dropout_{index + 1}"))
+            if self.encoder_dropout > 0:
+                layers.append(tf.keras.layers.Dropout(self.encoder_dropout, name=f"encoder_dropout_{index + 1}"))
 
         layers.extend(
             [
@@ -128,8 +134,8 @@ class Conv2DAutoencoder(BaseModel):
                 ]
             )
 
-            if self.dropout > 0:
-                layers.append(tf.keras.layers.Dropout(self.dropout, name=f"decoder_dropout_{index + 1}"))
+            if self.decoder_dropout > 0:
+                layers.append(tf.keras.layers.Dropout(self.decoder_dropout, name=f"decoder_dropout_{index + 1}"))
 
         return tf.keras.Sequential(layers, name="decoder")
 
@@ -164,6 +170,9 @@ class Conv2DAutoencoder(BaseModel):
             "decoder_layers": self.decoder_layers,
             "activation": self.activation,
             "dropout": self.dropout,
+            "encoder_dropout": self.encoder_dropout,
+            "decoder_dropout": self.decoder_dropout,
+            "output_activation": self.output_activation,
         }
 
     @classmethod
@@ -204,5 +213,8 @@ def build_autoencoder(
         decoder_layers=cfg.get("decoder_layers", (32, 64, 128)),
         activation=cfg.get("activation", "relu"),
         dropout=cfg.get("dropout", 0.2),
+        encoder_dropout=cfg.get("encoder_dropout"),
+        decoder_dropout=cfg.get("decoder_dropout"),
+        output_activation=cfg.get("output_activation", "sigmoid"),
         config=cfg,
     )

@@ -6,7 +6,7 @@ Install in development mode:
 
 After installation, you can import any module like:
     from src.utils.logger import get_logger
-    from src.training.trainer import Trainer
+    from src.training.trainer import KerasTrainer
     from src.data.spectrogram import SpectrogramExtractor
 """
 

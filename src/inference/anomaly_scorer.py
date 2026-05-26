@@ -19,6 +19,7 @@ from typing import Literal
 import numpy as np
 import tensorflow as tf
 
+from src.models import Conv2DAutoencoder
 from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -36,6 +37,18 @@ class ThresholdResult:
     mean: float | None = None
     std: float | None = None
     std_multiplier: float | None = None
+
+
+@dataclass(frozen=True)
+class ScoreSummary:
+    """Basic descriptive statistics for a set of anomaly scores."""
+
+    count: int
+    mean: float
+    std: float
+    minimum: float
+    maximum: float
+    percentile_95: float
 
 
 def reconstruction_error(
@@ -83,13 +96,13 @@ def score_batch(
     Args:
         model: Trained Keras autoencoder.
         batch: Input batch with channels-last shape.
-        verbose: Verbosity passed to ``model.predict``.
+        verbose: Retained for API compatibility; direct model invocation is quiet.
 
     Returns:
         1D numpy array of reconstruction-error scores.
     """
     batch_arr = np.asarray(batch, dtype=np.float32)
-    reconstructed = model.predict(batch_arr, verbose=verbose)
+    reconstructed = model(tf.convert_to_tensor(batch_arr), training=False)
     return reconstruction_error(batch_arr, reconstructed)
 
 
@@ -108,10 +121,12 @@ def score_dataset(
     labels: list[np.ndarray] = []
 
     for batch in dataset:
-        if isinstance(batch, tuple):
+        if isinstance(batch, (tuple, list)):
             inputs = batch[0]
             if len(batch) > 1:
-                labels.append(np.asarray(batch[1]))
+                possible_labels = np.asarray(batch[1])
+                if possible_labels.ndim <= 1:
+                    labels.append(possible_labels)
         else:
             inputs = batch
 
@@ -167,6 +182,34 @@ def compute_threshold(
         return ThresholdResult(value=float(fixed_threshold), method="fixed")
 
     raise ValueError("Unknown threshold method. Use 'percentile', 'mean_std', or 'fixed'.")
+
+
+def threshold_from_config(
+    normal_scores: np.ndarray | list[float],
+    config: dict,
+) -> ThresholdResult:
+    """Calculate the normal-data threshold specified by project configuration."""
+    inference_config = config.get("inference", {})
+    return compute_threshold(
+        normal_scores,
+        method=inference_config.get("threshold_method", "percentile"),
+        percentile=float(inference_config.get("percentile", 95.0)),
+        std_multiplier=float(inference_config.get("std_multiplier", 2.0)),
+        fixed_threshold=inference_config.get("fixed_threshold"),
+    )
+
+
+def summarize_scores(scores: np.ndarray | list[float]) -> ScoreSummary:
+    """Return descriptive statistics suitable for metrics JSON output."""
+    scores_arr = _validate_scores(scores)
+    return ScoreSummary(
+        count=int(scores_arr.size),
+        mean=float(np.mean(scores_arr)),
+        std=float(np.std(scores_arr)),
+        minimum=float(np.min(scores_arr)),
+        maximum=float(np.max(scores_arr)),
+        percentile_95=float(np.percentile(scores_arr, 95.0)),
+    )
 
 
 def classify_scores(
@@ -309,6 +352,7 @@ class ReconstructionAnomalyScorer:
         percentile: float = 95.0,
         std_multiplier: float = 2.0,
         fixed_threshold: float | None = None,
+        model: tf.keras.Model | None = None,
     ):
         self.threshold = threshold
         self.threshold_method = threshold_method
@@ -316,6 +360,22 @@ class ReconstructionAnomalyScorer:
         self.std_multiplier = std_multiplier
         self.fixed_threshold = fixed_threshold
         self.threshold_result: ThresholdResult | None = None
+        self.model = model
+
+    @classmethod
+    def from_model_path(
+        cls,
+        model_path: str | Path,
+        **kwargs,
+    ) -> "ReconstructionAnomalyScorer":
+        """Load a saved project autoencoder and create a reconstruction scorer."""
+        model = tf.keras.models.load_model(
+            model_path,
+            custom_objects={"Conv2DAutoencoder": Conv2DAutoencoder},
+            compile=False,
+        )
+        logger.info("Loaded Keras model for scoring: %s", model_path)
+        return cls(model=model, **kwargs)
 
     def fit_threshold(self, normal_scores: np.ndarray | list[float]) -> ThresholdResult:
         """Fit and store a threshold from normal/reference reconstruction scores."""
@@ -330,17 +390,28 @@ class ReconstructionAnomalyScorer:
         self.threshold_result = result
         return result
 
-    def score_batch(self, model: tf.keras.Model, batch: np.ndarray | tf.Tensor, verbose: int = 0) -> np.ndarray:
+    def score_batch(
+        self,
+        batch: np.ndarray | tf.Tensor,
+        model: tf.keras.Model | None = None,
+        verbose: int = 0,
+    ) -> np.ndarray:
         """Return reconstruction scores for one batch."""
+        model = model or self.model
+        if model is None:
+            raise ValueError("A Keras model is required for batch scoring.")
         return score_batch(model, batch, verbose=verbose)
 
     def score_dataset(
         self,
-        model: tf.keras.Model,
         dataset: tf.data.Dataset,
+        model: tf.keras.Model | None = None,
         verbose: int = 0,
     ) -> tuple[np.ndarray, np.ndarray | None]:
         """Return reconstruction scores, and labels when the dataset includes them."""
+        model = model or self.model
+        if model is None:
+            raise ValueError("A Keras model is required for dataset scoring.")
         return score_dataset(model, dataset, verbose=verbose)
 
     def predict(self, scores: np.ndarray | list[float]) -> np.ndarray:
