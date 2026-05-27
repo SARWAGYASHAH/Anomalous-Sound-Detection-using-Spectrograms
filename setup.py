@@ -32,12 +32,15 @@ setup(
         "seaborn>=0.12.0",
         "mlflow>=2.10.0",
         "tqdm>=4.65.0",
+        "fastapi>=0.115.0",
+        "uvicorn[standard]>=0.30.0",
         "Pillow>=9.5.0",
     ],
     extras_require={
         "dev": [
             "pytest>=7.3.0",
             "pytest-cov>=4.1.0",
+            "httpx>=0.27.0",
         ],
     },
 )

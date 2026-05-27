@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SoundGuard AI | Machine Sound Command Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">S</span>
+      <div>
+        <strong>SoundGuard AI</strong>
+        <span>Predictive acoustic maintenance</span>
+      </div>
+    </div>
+    <div class="top-controls">
+      <span class="live-pill"><i></i> System active</span>
+      <select id="modelSelector" aria-label="Select model version"></select>
+      <button class="ghost-button">Gearbox line 01</button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside class="sidebar">
+      <p class="eyebrow">Operations</p>
+      <nav class="nav" aria-label="Dashboard navigation">
+        <button class="nav-item active" data-view="overview"><span>01</span> Overview</button>
+        <button class="nav-item" data-view="analyze"><span>02</span> Analyze Audio</button>
+        <button class="nav-item" data-view="evaluation"><span>03</span> Evaluation</button>
+        <button class="nav-item" data-view="artifacts"><span>04</span> Artifacts</button>
+      </nav>
+      <div class="side-status panel">
+        <p class="eyebrow">Model Service</p>
+        <h3 id="sideModel">Loading</h3>
+        <div class="status-row"><i class="dot cyan"></i><span id="sideFramework">Keras runtime</span></div>
+        <div class="status-row"><i class="dot green"></i><span>Inference online</span></div>
+      </div>
+    </aside>
+
+    <main class="content">
+      <section class="view active" id="overview">
+        <div class="intro-row">
+          <div>
+            <p class="eyebrow">Command Dashboard</p>
+            <h1>Acoustic health, in quiet focus.</h1>
+            <p class="subtitle">Reconstruction-based anomaly detection for industrial gearbox recordings.</p>
+          </div>
+          <button class="primary-button jump-analyze">Analyze a WAV file</button>
+        </div>
+
+        <div class="kpi-grid" id="kpiGrid">
+          <article class="kpi panel"><p>Source Test Samples</p><strong id="kpiSamples">--</strong><small>Evaluated recordings</small></article>
+          <article class="kpi panel"><p>Normal State</p><strong id="kpiNormal">--</strong><small class="positive">Stable detections</small></article>
+          <article class="kpi panel"><p>Follow Up</p><strong id="kpiFollow">--</strong><small class="warning">Needs review</small></article>
+          <article class="kpi panel"><p>Alert State</p><strong id="kpiAlert">--</strong><small class="danger">Attention signals</small></article>
+          <article class="kpi panel accent"><p>AUC-ROC</p><strong id="kpiAuc">--</strong><small>Latest source test run</small></article>
+        </div>
+
+        <div class="overview-grid">
+          <article class="panel chart-panel">
+            <div class="panel-head">
+              <div>
+                <p class="eyebrow">Signal Flow</p>
+                <h2>Anomaly score stream</h2>
+              </div>
+              <span class="meta" id="thresholdLabel">Threshold --</span>
+            </div>
+            <svg id="trendChart" viewBox="0 0 760 240" role="img" aria-label="Recent anomaly scores and threshold"></svg>
+          </article>
+
+          <article class="panel intelligence">
+            <div class="panel-head compact"><h2>Model Intelligence</h2><i class="dot cyan"></i></div>
+            <p class="eyebrow">Recommended Action</p>
+            <div class="recommendation" id="recommendation">Review high-relative-error recordings before maintenance scheduling.</div>
+            <p class="eyebrow">Runtime Status</p>
+            <div class="decision-log">
+              <div><i class="dot green"></i><span>Autoencoder model available</span></div>
+              <div><i class="dot cyan"></i><span>Evaluation metrics attached</span></div>
+              <div><i class="dot amber"></i><span>Threshold policy: normal reference</span></div>
+            </div>
+          </article>
+        </div>
+
+        <article class="panel table-panel">
+          <div class="panel-head">
+            <div><p class="eyebrow">Decision Log</p><h2>Recent predictions</h2></div>
+            <button class="secondary-button jump-analyze">New analysis</button>
+          </div>
+          <table>
+            <thead><tr><th>Audio file</th><th>Model</th><th>Score</th><th>Threshold</th><th>Severity</th></tr></thead>
+            <tbody id="predictionRows"></tbody>
+          </table>
+          <p class="empty" id="predictionEmpty">No interactive predictions saved yet. Analyze one WAV file to begin the decision log.</p>
+        </article>
+      </section>
+
+      <section class="view" id="analyze">
+        <div class="section-title">
+          <p class="eyebrow">Inference Workbench</p>
+          <h1>Analyze machine audio</h1>
+          <p class="subtitle">Upload a `.wav` recording and route it through the active Keras autoencoder.</p>
+        </div>
+        <div class="analysis-layout">
+          <article class="panel uploader">
+            <label class="dropzone" id="dropzone" for="audioFile">
+              <input type="file" id="audioFile" accept=".wav,audio/wav">
+              <span class="upload-icon">+</span>
+              <strong>Drop WAV recording here</strong>
+              <span>or browse local machine audio</span>
+            </label>
+            <div class="form-row">
+              <div><label>Machine type</label><div class="fake-input">Gearbox</div></div>
+              <div><label>Active model</label><div class="fake-input" id="analysisModel">--</div></div>
+            </div>
+            <button class="primary-button full" id="analyzeButton" disabled>Run anomaly analysis</button>
+            <p class="upload-note" id="selectedFile">Select one WAV recording to begin.</p>
+          </article>
+
+          <article class="panel result-panel" id="resultPanel">
+            <div class="result-placeholder" id="resultPlaceholder">
+              <p class="eyebrow">No Result Yet</p>
+              <h2>Analysis output will appear here.</h2>
+              <p>Score, threshold policy, and the operational severity will be shown after inference.</p>
+            </div>
+            <div class="result-content hidden" id="resultContent">
+              <div class="panel-head compact">
+                <div><p class="eyebrow">Prediction Result</p><h2 id="resultFilename">Audio sample</h2></div>
+                <span class="badge" id="resultBadge">Normal</span>
+              </div>
+              <div class="metric-pair">
+                <div><p>Anomaly score</p><strong id="resultScore">--</strong></div>
+                <div><p>Threshold</p><strong id="resultThreshold">--</strong></div>
+              </div>
+              <div class="risk-meter">
+                <div class="meter-label"><span>Relative reconstruction error</span><b id="resultRelative">--</b></div>
+                <div class="track"><span id="riskFill"></span></div>
+                <div class="scale"><span>Normal</span><span>Follow Up</span><span>Alert</span></div>
+              </div>
+              <div class="result-note" id="resultNote"></div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="evaluation">
+        <div class="section-title row-title">
+          <div>
+            <p class="eyebrow">Model Validation</p>
+            <h1>Keras autoencoder performance</h1>
+          </div>
+          <select id="splitSelector"><option value="source_test">Source Test</option><option value="target_test">Target Test</option></select>
+        </div>
+        <div class="metric-strip">
+          <article class="panel"><p>AUC</p><strong id="metricAuc">--</strong></article>
+          <article class="panel"><p>pAUC</p><strong id="metricPauc">--</strong></article>
+          <article class="panel"><p>Precision</p><strong id="metricPrecision">--</strong></article>
+          <article class="panel"><p>Recall</p><strong id="metricRecall">--</strong></article>
+          <article class="panel"><p>F1 Score</p><strong id="metricF1">--</strong></article>
+        </div>
+        <div class="plot-grid">
+          <article class="panel image-panel"><div class="panel-head compact"><h2>ROC curve</h2></div><img id="rocPlot" alt="ROC curve plot"></article>
+          <article class="panel image-panel"><div class="panel-head compact"><h2>Score distribution</h2></div><img id="scorePlot" alt="Anomaly score distribution plot"></article>
+        </div>
+        <article class="panel policy">
+          <p class="eyebrow">Threshold Policy</p>
+          <p id="policyText">Loading evaluation settings...</p>
+        </article>
+      </section>
+
+      <section class="view" id="artifacts">
+        <div class="section-title">
+          <p class="eyebrow">Model Registry</p>
+          <h1>Versioned artifacts</h1>
+          <p class="subtitle">Saved Keras checkpoints and run outputs available to the dashboard service.</p>
+        </div>
+        <article class="panel table-panel">
+          <table>
+            <thead><tr><th>Version</th><th>Primary model</th><th>Files</th><th>Modified</th><th>Status</th></tr></thead>
+            <tbody id="artifactRows"></tbody>
+          </table>
+        </article>
+      </section>
+    </main>
+  </div>
+  <div class="toast hidden" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

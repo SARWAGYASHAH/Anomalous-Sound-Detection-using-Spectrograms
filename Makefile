@@ -3,7 +3,7 @@ CONFIG ?= config/default.yaml
 MODEL ?=
 AUDIO ?=
 
-.PHONY: preprocess train train-dry evaluate predict test pipeline-colab mlflow-ui
+.PHONY: preprocess train train-dry evaluate predict serve test pipeline-colab mlflow-ui
 
 preprocess:
 	$(PYTHON) pipeline/01_preprocess.py --config $(CONFIG)
@@ -19,6 +19,9 @@ evaluate:
 
 predict:
 	$(PYTHON) pipeline/04_predict.py --config $(CONFIG) --file $(AUDIO) $(if $(MODEL),--model-path $(MODEL),)
+
+serve:
+	$(PYTHON) -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --reload
 
 test:
 	$(PYTHON) -m pytest -q

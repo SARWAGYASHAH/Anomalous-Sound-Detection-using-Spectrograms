@@ -1,8 +1,8 @@
 # Anomalous Sound Detection
 
 Keras autoencoder pipeline for detecting anomalous industrial machine sounds
-from mel spectrograms. The current project is focused on the ML workflow only:
-preprocessing, training, evaluation, and single-file prediction.
+from mel spectrograms. The project includes the ML workflow and a locally
+served monitoring dashboard for exploring model artifacts and predictions.
 
 ## Current Status
 
@@ -13,9 +13,10 @@ preprocessing, training, evaluation, and single-file prediction.
   dry checks.
 - Reconstruction-error scoring, threshold helpers, severity classification,
   evaluation metrics, and WAV prediction are implemented.
+- A FastAPI backend and Stitch-inspired dashboard expose model status,
+  evaluation artifacts, and interactive `.wav` prediction locally.
 - Optional Mahalanobis helper functions remain available in
   `src/inference/anomaly_scorer.py` for future scoring experiments.
-- No backend or user interface is part of this phase.
 
 ## Flow
 
@@ -50,7 +51,9 @@ tests/                      Lightweight shape and inference tests
 notebooks/
   06_keras_colab_training.ipynb
 artifacts/                  Generated models, metadata, plots, and logs
+web/                        Dashboard HTML, CSS, and JavaScript
 run_pipeline.py             Command-line stage orchestrator
+src/api/                    FastAPI dashboard and inference endpoints
 ```
 
 Processed data is expected below:
@@ -114,6 +117,40 @@ python pipeline/04_predict.py --config config/default.yaml --model-path artifact
 When `--model-path` is omitted, evaluation and prediction select the newest
 available `.keras` artifact automatically.
 
+## Dashboard Application
+
+The dashboard uses the provided Cinematic Precision / Stitch design direction:
+dark tonal surfaces, compact operational panels, and restrained status colors.
+It is served by FastAPI and reads the real local model/evaluation artifacts.
+
+Start it locally:
+
+```bash
+python -m uvicorn src.api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Then open `http://127.0.0.1:8000`.
+
+Available screens:
+
+- Overview: evaluation KPIs, score trend, and recent interactive predictions.
+- Analyze Audio: upload a `.wav` file and obtain score, threshold, and severity.
+- Evaluation: AUC, pAUC, precision, recall, F1, ROC, and score distribution.
+- Artifacts: available versioned Keras model files.
+
+API routes:
+
+```text
+GET  /api/health
+GET  /api/dashboard
+GET  /api/models
+GET  /api/evaluations/source_test
+POST /api/predict?filename=sample.wav&model_version=v2
+```
+
+`POST /api/predict` accepts WAV bytes as its request body. The dashboard sends
+files in this format directly, avoiding a separate upload service.
+
 ## Colab Training
 
 Use `notebooks/06_keras_colab_training.ipynb` to mount Drive, install
@@ -164,6 +201,7 @@ Make shortcuts:
 make train-dry
 make evaluate MODEL=artifacts/models/v2/best_model.keras
 make predict MODEL=artifacts/models/v2/best_model.keras AUDIO=path/to/file.wav
+make serve
 make pipeline-colab
 ```
 
