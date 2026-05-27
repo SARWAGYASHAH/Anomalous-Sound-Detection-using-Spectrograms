@@ -66,7 +66,7 @@ h2 { font-size: 19px; line-height: 1.25; }
 }
 .brand strong { display: block; font-size: 20px; }
 .brand div span { display: block; font-size: 11px; color: var(--muted); letter-spacing: .04em; }
-.live-pill, .ghost-button, select, .fake-input {
+.live-pill, .ghost-button, .refresh-button, select, .fake-input {
   height: 38px;
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -77,6 +77,13 @@ h2 { font-size: 19px; line-height: 1.25; }
   gap: 8px;
 }
 .live-pill { color: var(--muted); font-size: 12px; }
+.refresh-button {
+  background: transparent;
+  color: var(--muted);
+  transition: color .18s, border-color .18s, background .18s;
+}
+.refresh-button:hover { color: var(--text); border-color: #3c404b; background: var(--panel-high); }
+.refresh-button.refreshing { color: var(--cyan); pointer-events: none; }
 select { min-width: 130px; }
 .dot, .live-pill i {
   display: inline-block;
@@ -151,6 +158,7 @@ select { min-width: 130px; }
 .kpi { min-height: 120px; padding: 18px; }
 .kpi p, .metric-strip p { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
 .kpi strong { display: block; font: 520 30px/1 Manrope, sans-serif; letter-spacing: -.04em; margin-bottom: 12px; }
+.kpi strong.bump { animation: number-bump .42s ease; color: var(--primary); }
 .kpi small { color: var(--muted); }
 .kpi .positive { color: var(--green); }
 .kpi .warning { color: var(--amber); }
@@ -162,9 +170,32 @@ select { min-width: 130px; }
 .panel-head.compact { align-items: center; }
 .meta { color: var(--cyan); font-size: 12px; }
 #trendChart { display: block; width: 100%; height: 245px; }
+.chart-meta { display: grid; gap: 6px; text-align: right; }
+.muted { color: var(--muted); font-size: 11px; }
+.chart-stage { position: relative; }
+.chart-point { cursor: crosshair; transition: r .14s, fill .14s; }
+.chart-point:hover { r: 6; fill: var(--cyan); }
+.chart-tooltip {
+  position: absolute;
+  min-width: 146px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: rgba(21, 22, 23, .96);
+  color: var(--text);
+  font-size: 12px;
+  pointer-events: none;
+  transform: translate(-50%, -115%);
+}
+.chart-tooltip strong { display: block; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
 .recommendation { background: var(--panel-high); border: 1px solid var(--divider); padding: 14px; border-radius: 5px; margin: 0 0 25px; color: #ced0d8; }
 .decision-log { display: grid; gap: 14px; }
 .decision-log div { border-left: 2px solid var(--divider); padding-left: 12px; display: flex; gap: 12px; align-items: center; color: var(--muted); }
+.decision-log p { color: var(--muted); font-size: 12px; }
+.activity-copy { display: grid; gap: 2px; min-width: 0; }
+.activity-copy strong { color: var(--text); font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 205px; }
+.activity-copy span { font-size: 11px; }
+tbody tr.new-row { animation: row-arrive .62s ease; }
 table { width: 100%; border-collapse: collapse; text-align: left; }
 th { padding: 0 12px 12px; color: var(--muted); font-size: 11px; font-weight: 500; letter-spacing: .1em; text-transform: uppercase; }
 td { height: 46px; border-top: 1px solid var(--divider); padding: 0 12px; font-variant-numeric: tabular-nums; }
@@ -219,6 +250,14 @@ td { height: 46px; border-top: 1px solid var(--divider); padding: 0 12px; font-v
 .image-panel img { width: 100%; display: block; border-radius: 4px; background: #fff; min-height: 280px; object-fit: contain; }
 .policy p:last-child { color: var(--muted); max-width: 900px; }
 .toast { position: fixed; right: 28px; bottom: 28px; max-width: 420px; background: var(--panel-high); border: 1px solid var(--border); padding: 14px 18px; border-radius: 6px; box-shadow: 0 18px 60px rgba(0,0,0,.4); }
+@keyframes number-bump {
+  0% { opacity: .5; transform: translateY(3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes row-arrive {
+  0% { background: rgba(122, 133, 255, .14); }
+  100% { background: transparent; }
+}
 
 @media (max-width: 1080px) {
   .topbar { padding: 0 18px; }

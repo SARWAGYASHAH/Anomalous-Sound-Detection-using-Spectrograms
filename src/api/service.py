@@ -59,6 +59,7 @@ class DashboardService:
             "model_available": model_path is not None,
             "active_model": str(model_path.relative_to(self.project_root)) if model_path else None,
             "evaluation_available": (self.evaluation_dir / "source_test" / "metrics.json").exists(),
+            "checked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
 
     def list_models(self) -> list[dict[str, Any]]:
@@ -117,13 +118,27 @@ class DashboardService:
         for path in sorted(self.predictions_dir.glob("*.json"), key=lambda item: item.stat().st_mtime, reverse=True)[:6]:
             with open(path, "r", encoding="utf-8") as handle:
                 payload = json.load(handle)
+            payload.setdefault(
+                "created_at",
+                datetime.fromtimestamp(path.stat().st_mtime).astimezone().isoformat(timespec="seconds"),
+            )
             recent_predictions.append(payload)
 
         processed_dir = self.project_root / self.config["data"]["processed_dir"]
         test_total = sum(len(list((processed_dir / "source_test" / label).glob("*.npy"))) for label in ("normal", "anomaly"))
         models = self.list_models()
         active_model = next((model for model in models if model["model_path"] == health["active_model"]), None)
+        activity = [
+            {
+                "filename": prediction["audio_file"],
+                "severity": prediction.get("severity", "normal"),
+                "score": prediction.get("score"),
+                "created_at": prediction["created_at"],
+            }
+            for prediction in recent_predictions[:4]
+        ]
         return {
+            "generated_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "health": health,
             "models": models,
             "active_model": active_model or (models[0] if models else None),
@@ -136,6 +151,7 @@ class DashboardService:
             },
             "trend": score_rows,
             "recent_predictions": recent_predictions,
+            "activity": activity,
             "evaluation": evaluation,
         }
 
@@ -175,11 +191,12 @@ class DashboardService:
         try:
             result = AudioPredictor(model, self.config, threshold, model_path).predict_file(temp_path)
             payload = result.to_dict()
+            created_at = datetime.now().astimezone()
             payload["audio_file"] = safe_name
             payload["model_path"] = str(model_path.relative_to(self.project_root))
             payload["model_version"] = model_path.parent.name
-            payload["created_at"] = datetime.now().isoformat()
-            output_name = f"{Path(safe_name).stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            payload["created_at"] = created_at.isoformat(timespec="seconds")
+            output_name = f"{Path(safe_name).stem}_{created_at.strftime('%Y%m%d_%H%M%S_%f')}.json"
             output_path = self.predictions_dir / output_name
             with open(output_path, "w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2)

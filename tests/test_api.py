@@ -44,3 +44,12 @@ def test_api_accepts_wav_body_for_prediction():
 
     assert response.status_code == 200
     assert response.json() == {"audio_file": "gearbox.wav", "severity": "normal", "model_version": "v2"}
+
+
+def test_dashboard_page_contains_live_refresh_controls():
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert 'id="syncStatus"' in response.text
+    assert 'id="refreshButton"' in response.text
+    assert 'id="activityFeed"' in response.text

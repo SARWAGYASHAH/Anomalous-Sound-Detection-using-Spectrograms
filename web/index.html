@@ -19,8 +19,9 @@
       </div>
     </div>
     <div class="top-controls">
-      <span class="live-pill"><i></i> System active</span>
+      <span class="live-pill"><i></i><span id="syncStatus">Connecting...</span></span>
       <select id="modelSelector" aria-label="Select model version"></select>
+      <button class="refresh-button" id="refreshButton" type="button" aria-label="Refresh dashboard">Refresh</button>
       <button class="ghost-button">Gearbox line 01</button>
     </div>
   </header>
@@ -67,21 +68,23 @@
                 <p class="eyebrow">Signal Flow</p>
                 <h2>Anomaly score stream</h2>
               </div>
-              <span class="meta" id="thresholdLabel">Threshold --</span>
+              <div class="chart-meta">
+                <span class="meta" id="thresholdLabel">Threshold --</span>
+                <span class="muted" id="chartHint">Hover points for detail</span>
+              </div>
             </div>
-            <svg id="trendChart" viewBox="0 0 760 240" role="img" aria-label="Recent anomaly scores and threshold"></svg>
+            <div class="chart-stage">
+              <svg id="trendChart" viewBox="0 0 760 240" role="img" aria-label="Recent anomaly scores and threshold"></svg>
+              <div class="chart-tooltip hidden" id="trendTooltip"></div>
+            </div>
           </article>
 
           <article class="panel intelligence">
             <div class="panel-head compact"><h2>Model Intelligence</h2><i class="dot cyan"></i></div>
             <p class="eyebrow">Recommended Action</p>
             <div class="recommendation" id="recommendation">Review high-relative-error recordings before maintenance scheduling.</div>
-            <p class="eyebrow">Runtime Status</p>
-            <div class="decision-log">
-              <div><i class="dot green"></i><span>Autoencoder model available</span></div>
-              <div><i class="dot cyan"></i><span>Evaluation metrics attached</span></div>
-              <div><i class="dot amber"></i><span>Threshold policy: normal reference</span></div>
-            </div>
+            <p class="eyebrow">Recent Inference Activity</p>
+            <div class="decision-log" id="activityFeed"></div>
           </article>
         </div>
 
@@ -91,7 +94,7 @@
             <button class="secondary-button jump-analyze">New analysis</button>
           </div>
           <table>
-            <thead><tr><th>Audio file</th><th>Model</th><th>Score</th><th>Threshold</th><th>Severity</th></tr></thead>
+            <thead><tr><th>Audio file</th><th>Model</th><th>Time</th><th>Score</th><th>Threshold</th><th>Severity</th></tr></thead>
             <tbody id="predictionRows"></tbody>
           </table>
           <p class="empty" id="predictionEmpty">No interactive predictions saved yet. Analyze one WAV file to begin the decision log.</p>

@@ -1,7 +1,39 @@
-const state = { dashboard: null, models: [], selectedFile: null };
+const state = {
+  dashboard: null,
+  models: [],
+  selectedFile: null,
+  refreshing: false,
+  lastSync: null,
+  latestPrediction: null,
+};
 const $ = (id) => document.getElementById(id);
 const formatMetric = (value, digits = 4) => value == null ? "--" : Number(value).toFixed(digits);
 const escapeHtml = (text) => String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const severityColor = (label) => ({ normal: "#45d39a", follow_up: "#ffb689", alert: "#ff8178" }[label] || "#7a85ff");
+
+function relativeTime(timestamp) {
+  if (!timestamp) return "Just now";
+  const elapsed = Math.max(0, Math.round((Date.now() - new Date(timestamp).getTime()) / 1000));
+  if (elapsed < 5) return "Just now";
+  if (elapsed < 60) return `${elapsed}s ago`;
+  if (elapsed < 3600) return `${Math.floor(elapsed / 60)}m ago`;
+  return `${Math.floor(elapsed / 3600)}h ago`;
+}
+
+function updateSyncStatus() {
+  $("syncStatus").textContent = state.refreshing ? "Syncing data..." : `Live - updated ${relativeTime(state.lastSync)}`;
+}
+
+function updateKpi(id, value) {
+  const element = $(id);
+  const next = value ?? "--";
+  if (element.textContent !== String(next)) {
+    element.textContent = next;
+    element.classList.remove("bump");
+    void element.offsetWidth;
+    element.classList.add("bump");
+  }
+}
 
 function badge(label) {
   const normalized = String(label || "normal").toLowerCase();
@@ -30,9 +62,11 @@ function selectView(viewName) {
 
 function renderTrend(rows) {
   const svg = $("trendChart");
+  const tooltip = $("trendTooltip");
   const width = 760, height = 240, pad = 28;
   if (!rows.length) {
     svg.innerHTML = `<text x="28" y="125" fill="#9a9da3" font-family="Inter" font-size="13">No saved score stream found.</text>`;
+    tooltip.classList.add("hidden");
     return;
   }
   const values = rows.flatMap((row) => [row.score, row.threshold]);
@@ -47,21 +81,35 @@ function renderTrend(rows) {
     const gy = pad + step * (height - pad * 2);
     return `<line x1="${pad}" x2="${width - pad}" y1="${gy}" y2="${gy}" stroke="#1b1c1e" />`;
   }).join("");
+  const points = rows.map((row, index) => `<circle class="chart-point" data-index="${index}" cx="${x(index)}" cy="${y(row.score)}" r="3.5" fill="${severityColor(row.severity)}"/>`).join("");
   svg.innerHTML = `${grid}
     <line x1="${pad}" x2="${width - pad}" y1="${thresholdY}" y2="${thresholdY}" stroke="#50d8e9" stroke-dasharray="6 6" opacity=".8"/>
     <path d="${scoreLine}" fill="none" stroke="#7a85ff" stroke-width="2.5"/>
     <path d="${scoreLine} L ${x(rows.length - 1)} ${height - pad} L ${pad} ${height - pad} Z" fill="rgba(122,133,255,.10)"/>
-    <circle cx="${x(rows.length - 1)}" cy="${y(rows[rows.length - 1].score)}" r="4" fill="#7a85ff"/>
+    ${points}
     <text x="${width - pad - 116}" y="${Number(thresholdY) - 8}" fill="#50d8e9" font-size="11" font-family="Inter">threshold</text>`;
+  svg.querySelectorAll(".chart-point").forEach((point) => {
+    point.addEventListener("mouseenter", () => {
+      const row = rows[Number(point.dataset.index)];
+      tooltip.innerHTML = `<strong>${formatMetric(row.score, 6)}</strong>${escapeHtml(row.severity.replace("_", " "))} - sample ${row.sample}`;
+      tooltip.style.left = `${(Number(point.getAttribute("cx")) / width) * 100}%`;
+      tooltip.style.top = `${(Number(point.getAttribute("cy")) / height) * 100}%`;
+      tooltip.classList.remove("hidden");
+    });
+    point.addEventListener("mouseleave", () => tooltip.classList.add("hidden"));
+  });
 }
 
 function renderDashboard(data) {
+  const previousPrediction = state.latestPrediction;
   state.dashboard = data;
-  $("kpiSamples").textContent = data.kpis.test_samples ?? "--";
-  $("kpiNormal").textContent = data.kpis.normal ?? "--";
-  $("kpiFollow").textContent = data.kpis.follow_up ?? "--";
-  $("kpiAlert").textContent = data.kpis.alert ?? "--";
-  $("sideModel").textContent = data.health.active_model ? data.health.active_model.split("/")[2] || "Ready" : "No model";
+  state.lastSync = data.generated_at || data.health.checked_at || new Date().toISOString();
+  updateSyncStatus();
+  updateKpi("kpiSamples", data.kpis.test_samples);
+  updateKpi("kpiNormal", data.kpis.normal);
+  updateKpi("kpiFollow", data.kpis.follow_up);
+  updateKpi("kpiAlert", data.kpis.alert);
+  $("sideModel").textContent = data.health.active_model ? data.health.active_model.split(/[\\/]/)[2] || "Ready" : "No model";
   $("sideFramework").textContent = data.health.framework;
 
   if (data.evaluation) {
@@ -70,14 +118,37 @@ function renderDashboard(data) {
   renderTrend(data.trend || []);
 
   const rows = data.recent_predictions || [];
-  $("predictionRows").innerHTML = rows.map((row) => `<tr>
+  state.latestPrediction = rows[0]?.result_url || rows[0]?.created_at || null;
+  const hasNewPrediction = Boolean(previousPrediction && state.latestPrediction && previousPrediction !== state.latestPrediction);
+  $("predictionRows").innerHTML = rows.map((row, index) => `<tr class="${index === 0 && hasNewPrediction ? "new-row" : ""}">
       <td>${escapeHtml(row.audio_file)}</td>
       <td>${escapeHtml(row.model_version || "--")}</td>
+      <td>${escapeHtml(relativeTime(row.created_at))}</td>
       <td>${formatMetric(row.score, 6)}</td>
       <td>${formatMetric(row.threshold, 6)}</td>
       <td>${badge(row.severity)}</td>
     </tr>`).join("");
   $("predictionEmpty").style.display = rows.length ? "none" : "block";
+
+  const activity = data.activity || [];
+  $("activityFeed").innerHTML = activity.length
+    ? activity.map((entry) => `<div>
+        <i class="dot" style="background:${severityColor(entry.severity)}"></i>
+        <span class="activity-copy">
+          <strong>${escapeHtml(entry.filename)}</strong>
+          <span>${escapeHtml(entry.severity.replace("_", " "))} - ${relativeTime(entry.created_at)}</span>
+        </span>
+      </div>`).join("")
+    : `<p>No interactive predictions recorded yet.</p>`;
+
+  const latest = activity[0];
+  if (latest) {
+    $("recommendation").textContent = latest.severity === "alert"
+      ? `Review ${latest.filename} immediately; the latest inference is in the alert band.`
+      : latest.severity === "follow_up"
+        ? `Schedule a follow-up review for ${latest.filename}.`
+        : `Latest analyzed recording ${latest.filename} remains within the normal band.`;
+  }
 }
 
 function renderModels(models) {
@@ -155,13 +226,30 @@ async function analyzeSelectedFile() {
         ? "Schedule a follow-up inspection and compare against recent gearbox recordings."
         : "No action required. The reconstruction pattern remains inside the normal operating band.";
     showToast("Audio analysis completed.");
-    const dashboard = await api("/api/dashboard");
-    renderDashboard(dashboard);
+    await refreshDashboard();
   } catch (error) {
     showToast(error.message);
   } finally {
     button.disabled = false;
     button.textContent = "Run anomaly analysis";
+  }
+}
+
+async function refreshDashboard(showFeedback = false) {
+  if (state.refreshing) return;
+  state.refreshing = true;
+  $("refreshButton").classList.add("refreshing");
+  updateSyncStatus();
+  try {
+    const dashboard = await api("/api/dashboard");
+    renderDashboard(dashboard);
+    if (showFeedback) showToast("Dashboard data refreshed.");
+  } catch (error) {
+    if (showFeedback) showToast(`Refresh failed: ${error.message}`);
+  } finally {
+    state.refreshing = false;
+    $("refreshButton").classList.remove("refreshing");
+    updateSyncStatus();
   }
 }
 
@@ -180,9 +268,14 @@ document.querySelectorAll(".nav-item").forEach((button) => button.addEventListen
 document.querySelectorAll(".jump-analyze").forEach((button) => button.addEventListener("click", () => selectView("analyze")));
 $("modelSelector").addEventListener("change", (event) => { $("analysisModel").textContent = event.target.value; });
 $("splitSelector").addEventListener("change", (event) => loadEvaluation(event.target.value));
+$("refreshButton").addEventListener("click", () => refreshDashboard(true));
 $("audioFile").addEventListener("change", (event) => setFile(event.target.files[0]));
 $("analyzeButton").addEventListener("click", analyzeSelectedFile);
 ["dragenter", "dragover"].forEach((name) => $("dropzone").addEventListener(name, (event) => { event.preventDefault(); $("dropzone").classList.add("dragging"); }));
 ["dragleave", "drop"].forEach((name) => $("dropzone").addEventListener(name, (event) => { event.preventDefault(); $("dropzone").classList.remove("dragging"); }));
 $("dropzone").addEventListener("drop", (event) => setFile(event.dataTransfer.files[0]));
 initialize();
+setInterval(updateSyncStatus, 1000);
+setInterval(() => {
+  if (!document.hidden) refreshDashboard();
+}, 15000);

@@ -133,10 +133,14 @@ Then open `http://127.0.0.1:8000`.
 
 Available screens:
 
-- Overview: operational status counts, score trend, and recent interactive predictions.
+- Overview: auto-refreshing status counts, hoverable score trend, live sync status,
+  and a recent inference activity feed.
 - Analyze Audio: upload a `.wav` file and obtain score, threshold, and severity.
 - Evaluation: AUC, pAUC, precision, recall, F1, ROC, and score distribution.
 - Artifacts: available versioned Keras model files.
+
+The Overview refreshes from the API every 15 seconds while the tab is active,
+and its refresh button retrieves new prediction activity immediately.
 
 API routes:
 
