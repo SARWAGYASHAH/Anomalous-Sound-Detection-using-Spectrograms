@@ -147,7 +147,7 @@ select { min-width: 130px; }
 .primary-button:disabled { opacity: .45; cursor: not-allowed; }
 .secondary-button { background: transparent; border-color: var(--border); color: var(--muted); }
 .full { width: 100%; margin-top: 20px; }
-.kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(140px, 1fr)); gap: 14px; margin-bottom: 18px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(140px, 1fr)); gap: 14px; margin-bottom: 18px; }
 .kpi { min-height: 120px; padding: 18px; }
 .kpi p, .metric-strip p { color: var(--muted); font-size: 12px; margin-bottom: 14px; }
 .kpi strong { display: block; font: 520 30px/1 Manrope, sans-serif; letter-spacing: -.04em; margin-bottom: 12px; }

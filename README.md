@@ -133,7 +133,7 @@ Then open `http://127.0.0.1:8000`.
 
 Available screens:
 
-- Overview: evaluation KPIs, score trend, and recent interactive predictions.
+- Overview: operational status counts, score trend, and recent interactive predictions.
 - Analyze Audio: upload a `.wav` file and obtain score, threshold, and severity.
 - Evaluation: AUC, pAUC, precision, recall, F1, ROC, and score distribution.
 - Artifacts: available versioned Keras model files.

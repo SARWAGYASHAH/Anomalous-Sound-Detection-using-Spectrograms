@@ -61,7 +61,6 @@ function renderDashboard(data) {
   $("kpiNormal").textContent = data.kpis.normal ?? "--";
   $("kpiFollow").textContent = data.kpis.follow_up ?? "--";
   $("kpiAlert").textContent = data.kpis.alert ?? "--";
-  $("kpiAuc").textContent = formatMetric(data.kpis.auc);
   $("sideModel").textContent = data.health.active_model ? data.health.active_model.split("/")[2] || "Ready" : "No model";
   $("sideFramework").textContent = data.health.framework;
 
