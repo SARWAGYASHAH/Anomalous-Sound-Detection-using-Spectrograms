@@ -16,6 +16,7 @@ __all__ = [
     "extract_section",
     "get_labels",
     "load_spectrogram_array",
+    "resolve_wav_split_dir",
 ]
 
 
@@ -47,6 +48,7 @@ def __getattr__(name: str):
         "discover_wav_files",
         "extract_binary_label",
         "extract_section",
+        "resolve_wav_split_dir",
     }:
         from src.data import stgram_dataset
 

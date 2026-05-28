@@ -35,6 +35,7 @@ from src.data.stgram_dataset import (  # noqa: E402
     STgramWaveDataset,
     build_section_label_map,
     discover_wav_files,
+    resolve_wav_split_dir,
 )
 from src.models.stgram_mfn import build_stgram_mfn, freeze_feature_extractor  # noqa: E402
 from src.utils.logger import get_logger  # noqa: E402
@@ -95,9 +96,12 @@ def parse_args() -> argparse.Namespace:
 def raw_split_dir(config: dict[str, Any], split: str) -> Path:
     stgram = config.get("stgram", {})
     explicit_key = f"raw_{split}_dir"
-    if explicit_key in stgram:
-        return Path(stgram[explicit_key])
-    return Path("Data") / config["data"]["machine_type"] / split
+    return resolve_wav_split_dir(
+        split=split,
+        machine_type=config["data"].get("machine_type", "gearbox"),
+        data_root=Path(config["data"].get("raw_dir", "Data/raw")).parent,
+        explicit_dir=stgram.get(explicit_key),
+    )
 
 
 def make_run_dir(config: dict[str, Any]) -> Path:

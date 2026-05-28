@@ -25,6 +25,51 @@ def discover_wav_files(directory: str | Path) -> list[Path]:
     return sorted(directory.glob("*.wav"))
 
 
+def resolve_wav_split_dir(
+    split: str,
+    machine_type: str = "gearbox",
+    data_root: str | Path = "Data",
+    explicit_dir: str | Path | None = None,
+) -> Path:
+    """
+    Resolve a raw DCASE split directory that contains WAV files.
+
+    Google Drive zips sometimes extract with an extra parent directory, so the
+    STgram scripts should not assume only ``Data/gearbox/train`` exists.
+    """
+    data_root = Path(data_root)
+    candidates: list[Path] = []
+    if explicit_dir:
+        candidates.append(Path(explicit_dir))
+    candidates.append(data_root / machine_type / split)
+
+    checked: list[str] = []
+    for candidate in candidates:
+        checked.append(str(candidate))
+        if _contains_wavs(candidate):
+            return candidate
+
+    if data_root.exists():
+        nested_candidates = [
+            path
+            for path in data_root.rglob(split)
+            if path.is_dir() and path.name == split and _contains_wavs(path)
+        ]
+        nested_candidates = sorted(
+            nested_candidates,
+            key=lambda path: (machine_type not in path.parts, len(path.parts), str(path)),
+        )
+        if nested_candidates:
+            return nested_candidates[0]
+
+    hint = (
+        f"Could not find raw WAV split '{split}'. Checked: {checked}. "
+        f"Expected something like Data/{machine_type}/{split} containing .wav files. "
+        "In Colab, run the notebook data download/unzip cells before training."
+    )
+    raise FileNotFoundError(hint)
+
+
 def extract_section(filepath: str | Path) -> str:
     """Extract section id such as section_00 from a filename."""
     match = SECTION_PATTERN.search(Path(filepath).name)
@@ -47,6 +92,10 @@ def build_section_label_map(filepaths: Iterable[str | Path]) -> dict[str, int]:
     """Build a deterministic section-to-class mapping from file paths."""
     sections = sorted({extract_section(path) for path in filepaths})
     return {section: index for index, section in enumerate(sections)}
+
+
+def _contains_wavs(directory: Path) -> bool:
+    return directory.exists() and directory.is_dir() and any(directory.glob("*.wav"))
 
 
 class STgramWaveDataset(Dataset):

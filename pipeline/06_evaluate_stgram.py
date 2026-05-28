@@ -30,7 +30,7 @@ from tqdm import tqdm
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.data.stgram_dataset import STgramWaveDataset, discover_wav_files  # noqa: E402
+from src.data.stgram_dataset import STgramWaveDataset, discover_wav_files, resolve_wav_split_dir  # noqa: E402
 from src.models.stgram_mfn import build_stgram_mfn  # noqa: E402
 from src.utils.logger import get_logger  # noqa: E402
 from src.utils.metrics import evaluate_all  # noqa: E402
@@ -114,9 +114,12 @@ def resolve_artifact_dir(config: dict[str, Any], artifact_dir: str | None) -> Pa
 def raw_split_dir(config: dict[str, Any], split: str) -> Path:
     stgram = config.get("stgram", {})
     explicit_key = f"raw_{split}_dir"
-    if explicit_key in stgram:
-        return Path(stgram[explicit_key])
-    return Path("Data") / config["data"]["machine_type"] / split
+    return resolve_wav_split_dir(
+        split=split,
+        machine_type=config["data"].get("machine_type", "gearbox"),
+        data_root=Path(config["data"].get("raw_dir", "Data/raw")).parent,
+        explicit_dir=stgram.get(explicit_key),
+    )
 
 
 def create_dataset(config: dict[str, Any], split: str, section_to_label: dict[str, int]) -> STgramWaveDataset:
