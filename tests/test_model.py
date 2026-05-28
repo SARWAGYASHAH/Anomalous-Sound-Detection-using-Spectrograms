@@ -1,7 +1,9 @@
 import numpy as np
 import tensorflow as tf
+import torch
 
 from src.models import Conv2DAutoencoder, build_autoencoder
+from src.models.stgram_mfn import STgramMFN
 
 
 def test_autoencoder_forward_pass_keeps_project_input_shape():
@@ -41,3 +43,18 @@ def test_autoencoder_serialization_supports_extended_dropout_config(tmp_path):
     assert tuple(result.shape) == (1, 16, 17, 1)
     assert restored.decoder_dropout == 0.1
     assert restored.output_activation is None
+
+
+def test_stgram_arcface_metric_logits_do_not_apply_training_margin():
+    model = STgramMFN(num_classes=2, embedding_dim=2, use_arcface=True, arcface_scale=1.0)
+    with torch.no_grad():
+        model.arcface.weight.copy_(torch.eye(2))
+
+    features = torch.tensor([[0.8, 0.6]], dtype=torch.float32)
+    labels = torch.tensor([0], dtype=torch.long)
+
+    metric_logits = model.classification_logits(features)
+    margin_logits = model.arcface(features, labels)
+
+    assert metric_logits.argmax(dim=1).item() == 0
+    assert margin_logits.argmax(dim=1).item() == 1

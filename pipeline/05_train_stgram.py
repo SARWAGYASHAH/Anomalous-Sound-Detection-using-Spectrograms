@@ -176,6 +176,12 @@ def load_pretrained_if_requested(model, config: dict[str, Any], logger) -> None:
     logger.info("Unexpected checkpoint keys: %s", unexpected)
 
 
+@torch.no_grad()
+def count_correct_predictions(model, features: torch.Tensor, labels: torch.Tensor) -> int:
+    logits = model.classification_logits(features)
+    return int((logits.argmax(dim=1) == labels).sum().item())
+
+
 def train_epoch(model, loader, criterion, optimizer, device) -> tuple[float, float]:
     model.train()
     total_loss = 0.0
@@ -186,15 +192,16 @@ def train_epoch(model, loader, criterion, optimizer, device) -> tuple[float, flo
         mels = batch["mel"].to(device, non_blocking=True)
         labels = batch["section_label"].to(device, non_blocking=True)
 
-        logits, _ = model(waveforms, mels, labels)
+        logits, features = model(waveforms, mels, labels)
         loss = criterion(logits, labels)
+        metric_correct = count_correct_predictions(model, features, labels)
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
         optimizer.step()
 
         total_loss += loss.item() * labels.size(0)
-        correct += (logits.argmax(dim=1) == labels).sum().item()
+        correct += metric_correct
         total += labels.size(0)
     return total_loss / max(total, 1), correct / max(total, 1)
 
@@ -212,10 +219,10 @@ def validate_epoch(model, loader, criterion, device) -> tuple[float, float]:
         mels = batch["mel"].to(device, non_blocking=True)
         labels = batch["section_label"].to(device, non_blocking=True)
 
-        logits, _ = model(waveforms, mels, labels)
+        logits, features = model(waveforms, mels, labels)
         loss = criterion(logits, labels)
         total_loss += loss.item() * labels.size(0)
-        correct += (logits.argmax(dim=1) == labels).sum().item()
+        correct += count_correct_predictions(model, features, labels)
         total += labels.size(0)
     return total_loss / max(total, 1), correct / max(total, 1)
 

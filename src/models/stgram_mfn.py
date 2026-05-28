@@ -276,6 +276,11 @@ class STgramMFN(nn.Module):
         features = self.mobilefacenet(fused)
         return F.normalize(features, dim=1)
 
+    def classification_logits(self, features: torch.Tensor) -> torch.Tensor:
+        if self.use_arcface:
+            return self.arcface(features)
+        return self.classifier(features)
+
     def forward(
         self,
         waveform: torch.Tensor,
@@ -283,7 +288,7 @@ class STgramMFN(nn.Module):
         labels: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.extract_features(waveform, mel)
-        if self.use_arcface and labels is not None:
+        if self.use_arcface:
             logits = self.arcface(features, labels)
         else:
             logits = self.classifier(features)
