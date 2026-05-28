@@ -235,6 +235,7 @@ class STgramMFN(nn.Module):
         arcface_scale: float = 30.0,
         base_channels: int = 64,
         bottleneck_channels: int = 128,
+        embedding_dropout: float = 0.0,
     ) -> None:
         super().__init__()
         self.num_classes = int(num_classes)
@@ -242,6 +243,7 @@ class STgramMFN(nn.Module):
         self.num_frames = int(num_frames)
         self.embedding_dim = int(embedding_dim)
         self.use_arcface = bool(use_arcface)
+        self.embedding_dropout = nn.Dropout(p=float(embedding_dropout))
 
         self.tgramnet = TgramNet(
             out_channels=self.n_mels,
@@ -288,10 +290,11 @@ class STgramMFN(nn.Module):
         labels: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.extract_features(waveform, mel)
+        logit_features = F.normalize(self.embedding_dropout(features), dim=1) if self.training else features
         if self.use_arcface:
-            logits = self.arcface(features, labels)
+            logits = self.arcface(logit_features, labels)
         else:
-            logits = self.classifier(features)
+            logits = self.classifier(logit_features)
         return logits, features
 
 
@@ -310,6 +313,7 @@ def build_stgram_mfn(model_config: dict, num_classes: int) -> STgramMFN:
         arcface_scale=float(model_config.get("arcface_scale", 30.0)),
         base_channels=int(model_config.get("base_channels", 64)),
         bottleneck_channels=int(model_config.get("bottleneck_channels", 128)),
+        embedding_dropout=float(model_config.get("embedding_dropout", 0.0)),
     )
 
 

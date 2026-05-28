@@ -3,7 +3,7 @@ import tensorflow as tf
 import torch
 
 from src.models import Conv2DAutoencoder, build_autoencoder
-from src.models.stgram_mfn import STgramMFN
+from src.models.stgram_mfn import STgramMFN, build_stgram_mfn
 
 
 def test_autoencoder_forward_pass_keeps_project_input_shape():
@@ -58,3 +58,9 @@ def test_stgram_arcface_metric_logits_do_not_apply_training_margin():
 
     assert metric_logits.argmax(dim=1).item() == 0
     assert margin_logits.argmax(dim=1).item() == 1
+
+
+def test_stgram_builder_applies_embedding_dropout_config():
+    model = build_stgram_mfn({"embedding_dropout": 0.2}, num_classes=3)
+
+    assert model.embedding_dropout.p == 0.2

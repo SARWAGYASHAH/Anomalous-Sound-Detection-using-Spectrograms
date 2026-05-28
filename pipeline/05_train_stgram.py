@@ -69,6 +69,8 @@ def apply_cli_overrides(config: dict[str, Any], args: argparse.Namespace) -> dic
         updated["training"]["batch_size"] = args.batch_size
     if args.learning_rate is not None:
         updated["training"]["learning_rate"] = args.learning_rate
+    if args.patience is not None:
+        updated.setdefault("training", {}).setdefault("early_stopping", {})["patience"] = args.patience
     if args.output_dir is not None:
         updated.setdefault("stgram", {})["output_dir"] = args.output_dir
     if args.pretrained_checkpoint is not None:
@@ -85,6 +87,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=None, help="Override training epochs.")
     parser.add_argument("--batch-size", type=int, default=None, help="Override batch size.")
     parser.add_argument("--learning-rate", type=float, default=None, help="Override learning rate.")
+    parser.add_argument("--patience", type=int, default=None, help="Override early-stopping patience.")
     parser.add_argument("--output-dir", default=None, help="Override artifact root.")
     parser.add_argument("--pretrained-checkpoint", default=None, help="Optional .pt checkpoint to fine-tune.")
     parser.add_argument("--freeze-backbone", action="store_true", help="Train only ArcFace/classifier heads.")
@@ -182,7 +185,7 @@ def count_correct_predictions(model, features: torch.Tensor, labels: torch.Tenso
     return int((logits.argmax(dim=1) == labels).sum().item())
 
 
-def train_epoch(model, loader, criterion, optimizer, device) -> tuple[float, float]:
+def train_epoch(model, loader, criterion, optimizer, device, grad_clip_norm: float = 0.0) -> tuple[float, float]:
     model.train()
     total_loss = 0.0
     correct = 0
@@ -198,6 +201,8 @@ def train_epoch(model, loader, criterion, optimizer, device) -> tuple[float, flo
 
         optimizer.zero_grad(set_to_none=True)
         loss.backward()
+        if grad_clip_norm > 0:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip_norm)
         optimizer.step()
 
         total_loss += loss.item() * labels.size(0)
@@ -324,7 +329,9 @@ def main() -> None:
 
     optimizer = build_optimizer(config, model)
     scheduler = build_scheduler(config, optimizer)
-    criterion = nn.CrossEntropyLoss()
+    label_smoothing = float(config["training"].get("label_smoothing", 0.0))
+    grad_clip_norm = float(config["training"].get("gradient_clip_norm", 0.0))
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 
     batch = next(iter(train_loader))
     with torch.no_grad():
@@ -340,6 +347,8 @@ def main() -> None:
     logger.info("Dry batch logits: %s", tuple(logits.shape))
     logger.info("Dry batch features: %s", tuple(features.shape))
     logger.info("Model parameters: %s", sum(parameter.numel() for parameter in model.parameters()))
+    logger.info("Label smoothing: %.4f", label_smoothing)
+    logger.info("Gradient clip norm: %.4f", grad_clip_norm)
 
     run_dir = make_run_dir(config)
     save_json(config, run_dir / "config_snapshot.json")
@@ -351,12 +360,24 @@ def main() -> None:
 
     history: list[dict[str, float]] = []
     best_val_loss = float("inf")
+    best_epoch = 0
+    epochs_without_improvement = 0
     epochs = int(config["training"]["epochs"])
+    early_stopping = config["training"].get("early_stopping", {})
+    early_stopping_enabled = bool(early_stopping.get("enabled", True))
+    early_stopping_patience = int(early_stopping.get("patience", 0))
+    early_stopping_min_delta = float(early_stopping.get("min_delta", 0.0))
+    logger.info(
+        "Early stopping: enabled=%s patience=%s min_delta=%.4f",
+        early_stopping_enabled,
+        early_stopping_patience,
+        early_stopping_min_delta,
+    )
     best_path = run_dir / "best_model.pt"
     final_path = run_dir / "final_model.pt"
 
     for epoch in range(1, epochs + 1):
-        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss, train_acc = train_epoch(model, train_loader, criterion, optimizer, device, grad_clip_norm)
         val_loss, val_acc = validate_epoch(model, val_loader, criterion, device)
         if scheduler is not None:
             scheduler.step()
@@ -382,11 +403,24 @@ def main() -> None:
             lr,
         )
 
-        if val_loss < best_val_loss:
+        if val_loss < best_val_loss - early_stopping_min_delta:
             best_val_loss = val_loss
+            best_epoch = epoch
+            epochs_without_improvement = 0
             save_checkpoint(best_path, model, optimizer, config, section_to_label, history, epoch)
+        else:
+            epochs_without_improvement += 1
 
-    save_checkpoint(final_path, model, optimizer, config, section_to_label, history, epochs)
+        if early_stopping_enabled and early_stopping_patience > 0 and epochs_without_improvement >= early_stopping_patience:
+            logger.info(
+                "Early stopping at epoch %03d. Best epoch=%03d best_val_loss=%.4f",
+                epoch,
+                best_epoch,
+                best_val_loss,
+            )
+            break
+
+    save_checkpoint(final_path, model, optimizer, config, section_to_label, history, int(history[-1]["epoch"]))
     pd.DataFrame(history).to_csv(run_dir / "training_log.csv", index=False)
     plot_loss_curve(
         [row["train_loss"] for row in history],
