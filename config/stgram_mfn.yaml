@@ -17,27 +17,29 @@ model:
     hop_len: 512
     tgram_layers: 3
     use_arcface: true
-    arcface_margin: 0.5
+    arcface_margin: 0.3
     arcface_scale: 30.0
     base_channels: 64
-    bottleneck_channels: 128
-    embedding_dropout: 0.20
+    bottleneck_channels: 32
+    embedding_dropout: 0.0
 
 training:
   epochs: 100
   batch_size: 32
-  learning_rate: 0.0005
+  learning_rate: 0.0001
   weight_decay: 0.001
   optimizer: "adamw"
-  label_smoothing: 0.05
+  label_smoothing: 0.0
   gradient_clip_norm: 5.0
   early_stopping:
     enabled: true
-    patience: 8
-    min_delta: 0.001
+    patience: 15
+    min_delta: 0.0001
   scheduler:
-    type: "cosine"
-    eta_min: 0.0
+    type: "cosine_with_warmup"
+    warmup_epochs: 5
+    warmup_start_factor: 0.1
+    eta_min: 0.000001
 
 stgram:
   # Defaults match this repository's extracted DCASE-style data layout.
@@ -53,5 +55,5 @@ stgram:
 
   normalize_mel: true
   num_workers: 2
-  gmm_components: 2
-  gmm_reg_covar: 0.001
+  gmm_components: 8
+  gmm_reg_covar: 0.01

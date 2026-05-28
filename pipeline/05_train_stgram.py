@@ -152,6 +152,8 @@ def build_optimizer(config: dict[str, Any], model: torch.nn.Module) -> torch.opt
 def build_scheduler(config: dict[str, Any], optimizer: torch.optim.Optimizer):
     scheduler_config = config["training"].get("scheduler", {})
     scheduler_type = str(scheduler_config.get("type", "cosine")).lower()
+    epochs = int(config["training"]["epochs"])
+    eta_min = float(scheduler_config.get("eta_min", 0.0))
     if scheduler_type == "none":
         return None
     if scheduler_type == "step":
@@ -160,10 +162,30 @@ def build_scheduler(config: dict[str, Any], optimizer: torch.optim.Optimizer):
             step_size=int(scheduler_config.get("step_size", 10)),
             gamma=float(scheduler_config.get("gamma", 0.5)),
         )
+    if scheduler_type in {"cosine_with_warmup", "warmup_cosine"}:
+        warmup_epochs = int(scheduler_config.get("warmup_epochs", 5))
+        if warmup_epochs <= 0:
+            return torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs, eta_min=eta_min)
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer,
+            start_factor=float(scheduler_config.get("warmup_start_factor", 0.1)),
+            end_factor=1.0,
+            total_iters=warmup_epochs,
+        )
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer,
+            T_max=max(1, epochs - warmup_epochs),
+            eta_min=eta_min,
+        )
+        return torch.optim.lr_scheduler.SequentialLR(
+            optimizer,
+            schedulers=[warmup, cosine],
+            milestones=[warmup_epochs],
+        )
     return torch.optim.lr_scheduler.CosineAnnealingLR(
         optimizer,
-        T_max=int(config["training"]["epochs"]),
-        eta_min=float(scheduler_config.get("eta_min", 0.0)),
+        T_max=epochs,
+        eta_min=eta_min,
     )
 
 
