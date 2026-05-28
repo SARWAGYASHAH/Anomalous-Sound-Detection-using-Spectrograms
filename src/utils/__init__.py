@@ -1,19 +1,15 @@
-"""
-src.utils - Utility modules for the Anomalous Sound Detection pipeline.
+"""Utility helpers with lazy imports."""
 
-Modules:
-    logger             - Structured console + file logging
-    seed               - Reproducibility seed handler
-    metrics            - AUC-ROC, pAUC, precision/recall/F1
-    visualization      - Spectrogram and score plotting
-    artifact_versioner - Versioned model directory management
-    metadata_tracker   - Per-run JSON metadata persistence
-"""
+__all__ = ["get_logger", "set_seed"]
 
-from src.utils.logger import get_logger
-from src.utils.seed import set_seed
 
-__all__ = [
-    "get_logger",
-    "set_seed",
-]
+def __getattr__(name: str):
+    if name == "get_logger":
+        from src.utils.logger import get_logger
+
+        return get_logger
+    if name == "set_seed":
+        from src.utils.seed import set_seed
+
+        return set_seed
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

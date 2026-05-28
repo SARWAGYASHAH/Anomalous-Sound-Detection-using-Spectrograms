@@ -33,6 +33,9 @@ env/
 # ---------- Jupyter ----------
 .ipynb_checkpoints/
 
+# ---------- Reference notebooks provided for experiments ----------
+stgram_modeltraining.ipynb
+
 # ---------- IDE ----------
 .vscode/
 .idea/

@@ -21,9 +21,11 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "tensorflow>=2.12.0",
+        "torch>=2.1.0",
         "numpy>=1.24.0",
         "scipy>=1.10.0",
         "scikit-learn>=1.2.0",
+        "joblib>=1.3.0",
         "librosa>=0.10.0",
         "soundfile>=0.12.0",
         "pyyaml>=6.0",

@@ -1,0 +1,50 @@
+# STgram-MFN experiment override.
+#
+# Run with:
+#   python pipeline/05_train_stgram.py --config config/stgram_mfn.yaml
+#   python pipeline/06_evaluate_stgram.py --config config/stgram_mfn.yaml --split source_test
+
+project:
+  description: "STgram-MFN feature model with ArcFace training and GMM anomaly scoring"
+
+model:
+  type: "stgram_mfn"
+  stgram_mfn:
+    n_mels: 128
+    num_frames: 313
+    embedding_dim: 128
+    win_len: 1024
+    hop_len: 512
+    tgram_layers: 3
+    use_arcface: true
+    arcface_margin: 0.5
+    arcface_scale: 30.0
+    base_channels: 64
+    bottleneck_channels: 128
+
+training:
+  epochs: 100
+  batch_size: 32
+  learning_rate: 0.001
+  weight_decay: 0.0001
+  optimizer: "adam"
+  scheduler:
+    type: "cosine"
+    eta_min: 0.0
+
+stgram:
+  # Defaults match this repository's extracted DCASE-style data layout.
+  raw_train_dir: "Data/gearbox/train"
+  raw_source_test_dir: "Data/gearbox/source_test"
+  raw_target_test_dir: "Data/gearbox/target_test"
+  output_dir: "artifacts/models/stgram_mfn"
+  evaluation_dir: "artifacts/evaluation_stgram"
+
+  # Set this to a .pt checkpoint to fine-tune an existing trained STgram-MFN.
+  pretrained_checkpoint: null
+  freeze_backbone: false
+
+  normalize_mel: true
+  num_workers: 2
+  gmm_components: 2
+  gmm_reg_covar: 0.001

@@ -179,6 +179,53 @@ artifacts/models/v1/
 Training metadata is written to `artifacts/metadata/`; MLflow files are written
 under `mlruns/` when `mlflow.enabled` is true.
 
+## STgram-MFN Training
+
+The repo also includes a customizable PyTorch STgram-MFN path inspired by the
+`stgram_modeltraining.ipynb` experiment. It trains a section-classification
+embedding model with ArcFace, fits per-section Gaussian Mixture Models on normal
+training features, and evaluates anomaly scores from negative GMM likelihood.
+
+Colab workflow:
+
+```bash
+pip install -r requirements-colab.txt
+pip install -e .
+
+python pipeline/05_train_stgram.py --config config/stgram_mfn.yaml
+python pipeline/06_evaluate_stgram.py --config config/stgram_mfn.yaml --split source_test
+python pipeline/06_evaluate_stgram.py --config config/stgram_mfn.yaml --split target_test
+```
+
+Training writes a versioned run below:
+
+```text
+artifacts/models/stgram_mfn/run_YYYYMMDD_HHMMSS/
+  best_model.pt
+  final_model.pt
+  gmm_per_section.joblib
+  training_log.csv
+  training_loss.png
+  config_snapshot.json
+  section_to_label.json
+  training_summary.json
+```
+
+Evaluation writes:
+
+```text
+artifacts/evaluation_stgram/source_test/
+  metrics.json
+  scores.csv
+  anomaly_score_distribution.png
+  roc_curve.png
+```
+
+To fine-tune an existing STgram-MFN checkpoint, set
+`stgram.pretrained_checkpoint` in `config/stgram_mfn.yaml` or pass
+`--pretrained-checkpoint path/to/best_model.pt`. Add `--freeze-backbone` when
+you only want to train the ArcFace/classifier heads.
+
 ## Orchestration
 
 The orchestrator prevents accidental full local training unless explicitly
